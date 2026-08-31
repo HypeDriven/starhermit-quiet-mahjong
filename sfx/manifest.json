@@ -1,0 +1,74 @@
+[
+  {
+    "name": "tile-tap-select",
+    "seconds": 1,
+    "prompt": "A single light fingertip tap on a glazed ceramic mahjong tile resting on a wooden table, short bright click with a soft ceramic ring.",
+    "event": "select"
+  },
+  {
+    "name": "ui-focus-tick",
+    "seconds": 1,
+    "prompt": "A very short dry wooden tick, like a small bamboo stick tapping once on a lacquered box, quiet and precise.",
+    "event": "select"
+  },
+  {
+    "name": "tile-tap-release",
+    "seconds": 1,
+    "prompt": "A soft muted ceramic tap, a mahjong tile being set back down gently onto a felt tabletop, lower and duller than a selection click.",
+    "event": "deselect"
+  },
+  {
+    "name": "tile-pair-chime",
+    "seconds": 2,
+    "prompt": "Two glazed ceramic mahjong tiles lifted off the table together with a gentle clink, followed by a faint sustained glassy chime shimmer.",
+    "event": "remove"
+  },
+  {
+    "name": "tile-pair-clack",
+    "seconds": 1,
+    "prompt": "Two ceramic mahjong tiles knocked lightly against each other once, a clean bright clack with a short decay over a wooden table.",
+    "event": "remove"
+  },
+  {
+    "name": "invalid-dull-thud",
+    "seconds": 1,
+    "prompt": "A single dull muted thud, a fingertip knocking once on a padded leather surface, low and unresonant.",
+    "event": "invalid"
+  },
+  {
+    "name": "hint-glimmer",
+    "seconds": 2,
+    "prompt": "A delicate glimmering sparkle, tiny glass beads trickling over a small metal wind chime, a soft ascending shimmer.",
+    "event": "hint"
+  },
+  {
+    "name": "tiles-shuffle-swish",
+    "seconds": 2,
+    "prompt": "Many ceramic mahjong tiles sliding and swirling across a felt tabletop, a continuous swishing rustle with light ceramic ticks.",
+    "event": "shuffle"
+  },
+  {
+    "name": "undo-reverse-tap",
+    "seconds": 1,
+    "prompt": "A soft wooden block tapped once and immediately muffled by a palm, a short hollow tok with a quick damped ending.",
+    "event": "undo"
+  },
+  {
+    "name": "win-garden-chime",
+    "seconds": 3,
+    "prompt": "A small brass wind chime stirred gently in a quiet night garden, a warm ascending cluster of clear tones fading into silence.",
+    "event": "won"
+  },
+  {
+    "name": "lose-low-gong",
+    "seconds": 2,
+    "prompt": "A single soft strike on a small low gong, a deep mellow hum that decays slowly and quietly.",
+    "event": "lost"
+  },
+  {
+    "name": "pause-soft-knock",
+    "seconds": 1,
+    "prompt": "Two knuckles knocking once softly on a wooden door frame, a warm quiet knock with no echo.",
+    "event": "pause"
+  }
+]

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1226">
+<title>Quiet Mahjong</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23e8e3d8'/><circle cx='20' cy='13' r='9' fill='%230d1226'/></svg>">
+</head>
+<body data-theme="moonlit-garden">
+
+<div id="app">
+
+  <!-- 3D playfield: the canvas fills the game region but is never the only UI -->
+  <div id="stage" aria-hidden="true"></div>
+
+  <!-- Live regions for objective, turn/state, score, errors, results -->
+  <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="live-alert" class="sr-only" role="alert" aria-live="assertive"></div>
+
+  <!-- ======================= TITLE ======================= -->
+  <section id="screen-title" class="screen" aria-labelledby="title-heading">
+    <div class="panel title-panel">
+      <h1 id="title-heading">Quiet Mahjong</h1>
+      <p class="tagline">A moonlit garden of ceramic pairs.</p>
+      <button id="btn-play" class="primary big">Play</button>
+      <div class="title-secondary">
+        <button id="btn-daily" class="ghost">Daily challenge</button>
+        <button id="btn-journey" class="ghost">Journey</button>
+        <button id="btn-profile" class="ghost">Profile</button>
+      </div>
+      <p id="title-status" class="muted"></p>
+    </div>
+  </section>
+
+  <!-- ===================== MODE SELECT ===================== -->
+  <section id="screen-modes" class="screen" hidden aria-labelledby="modes-heading">
+    <div class="panel">
+      <h2 id="modes-heading">Choose a mode</h2>
+      <div class="card-grid" role="list">
+        <button class="card" data-mode="learn" role="listitem">
+          <strong>Learn</strong><span>Short interactive lessons, one rule at a time.</span>
+        </button>
+        <button class="card" data-mode="journey" role="listitem">
+          <strong>Journey</strong><span>40 authored stages with growing depth.</span>
+        </button>
+        <button class="card" data-mode="daily" role="listitem">
+          <strong>Daily</strong><span>One shared board per UTC day. Ranked.</span>
+        </button>
+        <button class="card" data-mode="practice" role="listitem">
+          <strong>Practice</strong><span>Pick a size, restart freely, undo allowed. Unranked.</span>
+        </button>
+        <button class="card" data-mode="challenge" role="listitem">
+          <strong>Challenge</strong><span>Move limits, speed targets, restricted tools.</span>
+        </button>
+        <button class="card" data-mode="scores" role="listitem">
+          <strong>Score chase</strong><span>Compare with global and friends boards.</span>
+        </button>
+      </div>
+      <button class="ghost back" data-back>Back</button>
+    </div>
+  </section>
+
+  <!-- ===================== MODE SETUP ===================== -->
+  <section id="screen-setup" class="screen" hidden aria-labelledby="setup-heading">
+    <div class="panel">
+      <h2 id="setup-heading">Setup</h2>
+      <p id="setup-description"></p>
+      <dl id="setup-facts" class="facts"></dl>
+      <div id="setup-options"></div>
+      <div class="row">
+        <button id="btn-start" class="primary">Start</button>
+        <button class="ghost back" data-back>Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====================== PLAY HUD ====================== -->
+  <section id="screen-play" class="screen play" hidden aria-label="Game board">
+    <header id="hud-top">
+      <div class="hud-block">
+        <h2 id="hud-objective">Clear the board</h2>
+        <p id="hud-progress">0 / 0 pairs</p>
+      </div>
+      <div class="hud-block">
+        <p id="hud-timer" aria-label="Elapsed time">0:00</p>
+        <p id="hud-limit" class="muted"></p>
+      </div>
+      <div class="hud-block">
+        <p id="hud-score" aria-label="Score">0</p>
+      </div>
+      <button id="btn-pause" class="icon" aria-label="Pause">⏸</button>
+    </header>
+
+    <!-- Accessible board mirror: semantic, keyboard-navigable model of the
+         3D board. One button per live tile; free tiles are marked. -->
+    <div id="board-mirror" role="grid" aria-label="Tile board"></div>
+
+    <footer id="hud-actions">
+      <button id="btn-hint" class="action">Hint</button>
+      <button id="btn-shuffle" class="action">Shuffle</button>
+      <button id="btn-undo" class="action">Undo</button>
+      <button id="btn-camera" class="action" aria-label="Reset camera">Camera</button>
+    </footer>
+
+    <p id="hud-message" class="toast" role="status"></p>
+    <p id="caption" class="caption" aria-hidden="true"></p>
+  </section>
+
+  <!-- ===================== PAUSE / SETTINGS ===================== -->
+  <section id="screen-pause" class="screen overlay" hidden aria-labelledby="pause-heading" role="dialog" aria-modal="true">
+    <div class="panel">
+      <h2 id="pause-heading">Paused</h2>
+      <button id="btn-resume" class="primary">Resume</button>
+      <details class="settings" open>
+        <summary>Audio</summary>
+        <label>Music <input id="set-music" type="range" min="0" max="100" value="60"></label>
+        <label>Effects <input id="set-effects" type="range" min="0" max="100" value="80"></label>
+        <label>Ambience <input id="set-ambience" type="range" min="0" max="100" value="50"></label>
+        <label>Voice cues <input id="set-voice" type="range" min="0" max="100" value="0"></label>
+        <label><input id="set-captions" type="checkbox"> Captions for audio cues</label>
+      </details>
+      <details class="settings">
+        <summary>Graphics</summary>
+        <label>Quality
+          <select id="set-quality">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+        <label>Theme <select id="set-theme"></select></label>
+      </details>
+      <details class="settings">
+        <summary>Controls &amp; accessibility</summary>
+        <label><input id="set-reduced-motion" type="checkbox"> Reduced motion</label>
+        <label><input id="set-high-contrast" type="checkbox"> High contrast</label>
+        <label><input id="set-large-text" type="checkbox"> Larger text</label>
+        <label><input id="set-left-handed" type="checkbox"> Left-handed controls</label>
+        <label><input id="set-hold-toggle" type="checkbox" checked> Tap-to-select (hold mode off)</label>
+        <label><input id="set-haptics" type="checkbox" checked> Haptics</label>
+        <label>Color palette
+          <select id="set-palette">
+            <option value="standard" selected>Standard</option>
+            <option value="deuteranopia">Deuteranopia-safe</option>
+            <option value="protanopia">Protanopia-safe</option>
+            <option value="tritanopia">Tritanopia-safe</option>
+          </select>
+        </label>
+        <label>Keyboard: <kbd>←→↑↓</kbd> move focus, <kbd>Enter</kbd>/<kbd>Space</kbd> select,
+          <kbd>Esc</kbd> pause, <kbd>H</kbd> hint, <kbd>U</kbd> undo, <kbd>S</kbd> shuffle, <kbd>C</kbd> camera reset.</label>
+      </details>
+      <details class="settings">
+        <summary>Help</summary>
+        <button id="btn-help" class="ghost">How to play</button>
+        <button id="btn-replay-tutorial" class="ghost">Replay tutorial</button>
+      </details>
+      <button id="btn-leave" class="danger">Leave round</button>
+    </div>
+  </section>
+
+  <!-- ====================== RESULTS ====================== -->
+  <section id="screen-results" class="screen overlay" hidden aria-labelledby="results-heading" role="dialog" aria-modal="true">
+    <div class="panel">
+      <h2 id="results-heading">Round complete</h2>
+      <p id="results-sub" class="muted"></p>
+      <table id="results-table" aria-label="Score breakdown">
+        <tbody></tbody>
+        <tfoot><tr><th scope="row">Total</th><td id="results-total">0</td></tr></tfoot>
+      </table>
+      <p id="results-progress" class="muted"></p>
+      <p id="results-achievements"></p>
+      <div id="results-board"></div>
+      <div class="row">
+        <button id="btn-retry" class="primary">Play again</button>
+        <button id="btn-next" class="ghost">Next</button>
+        <button id="btn-results-home" class="ghost">Home</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================= HELP ========================= -->
+  <section id="screen-help" class="screen overlay" hidden aria-labelledby="help-heading" role="dialog" aria-modal="true">
+    <div class="panel">
+      <h2 id="help-heading">How to play</h2>
+      <div class="rule-cards">
+        <div class="rule-card"><h3>Goal</h3><p>Remove matching pairs of free tiles until the table is empty.</p></div>
+        <div class="rule-card"><h3>Free tiles</h3><p>A tile is free when no tile covers it and its left or right side is open. Free tiles glow softly.</p></div>
+        <div class="rule-card"><h3>Select</h3><p>Tap or click a free tile, then tap a matching free tile. A second tap on the same tile deselects it.</p></div>
+        <div class="rule-card"><h3>Stuck</h3><p>Hint shows a legal pair; Shuffle re-deals the remaining tiles. Both cost score.</p></div>
+        <div class="rule-card"><h3>Controls</h3><p id="help-controls">Arrow keys move focus between free tiles, Enter selects, Esc pauses, H hint, U undo, S shuffle, C resets the camera.</p></div>
+        <div class="rule-card"><h3>Score</h3><p>Pairs and streaks add points; hints, shuffles, undos and invalid taps subtract. Finishing under par adds a time bonus.</p></div>
+      </div>
+      <button class="ghost back" data-back>Back</button>
+    </div>
+  </section>
+
+  <!-- ====================== SCORE CHASE ====================== -->
+  <section id="screen-scores" class="screen overlay" hidden aria-labelledby="scores-heading">
+    <div class="panel">
+      <h2 id="scores-heading">Leaderboards</h2>
+      <div class="row" role="tablist">
+        <button class="tab" data-board="global" role="tab" aria-selected="true">Global</button>
+        <button class="tab" data-board="daily" role="tab" aria-selected="false">Daily</button>
+        <button class="tab" data-board="friends" role="tab" aria-selected="false">Friends</button>
+      </div>
+      <p id="scores-note" class="muted"></p>
+      <ol id="scores-list"></ol>
+      <button class="ghost back" data-back>Back</button>
+    </div>
+  </section>
+
+  <!-- ======================= PROFILE ======================= -->
+  <section id="screen-profile" class="screen overlay" hidden aria-labelledby="profile-heading">
+    <div class="panel">
+      <h2 id="profile-heading">Profile</h2>
+      <label>Display name <input id="profile-name" type="text" maxlength="24" autocomplete="nickname"></label>
+      <p id="profile-stats" class="muted"></p>
+      <h3>Achievements</h3>
+      <ul id="profile-achievements"></ul>
+      <button class="ghost back" data-back>Back</button>
+    </div>
+  </section>
+
+  <!-- =================== COMPAT / ERROR =================== -->
+  <section id="screen-compat" class="screen" hidden aria-labelledby="compat-heading">
+    <div class="panel">
+      <h2 id="compat-heading">3D unavailable</h2>
+      <p>Quiet Mahjong needs WebGL for its 3D table. Your progress and settings are safe. You can still play with the accessible board below.</p>
+      <button id="btn-compat-continue" class="primary">Continue in 2D</button>
+    </div>
+  </section>
+
+  <!-- Loading -->
+  <div id="loading" role="status" aria-label="Loading">
+    <p id="loading-text">Preparing the garden…</p>
+    <progress id="loading-bar" max="100" value="10"></progress>
+  </div>
+
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
