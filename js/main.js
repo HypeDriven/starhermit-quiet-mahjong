@@ -105,12 +105,18 @@ const platform = {
       url.searchParams.delete('token');
       history.replaceState(null, '', url.pathname + url.search);
     }
+    if (/^[0-9a-f-]{36}\.starhermit\.com$/i.test(location.hostname)) {
+      this.online = false;
+      this.timeOffset = 0;
+      return;
+    }
     try {
       const t0 = Date.now();
       const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(2500) });
       if (!res.ok) throw new Error('http');
       const body = await res.json();
       const t1 = Date.now();
+      if (typeof body.epochMs !== 'number') throw new Error('invalid time response');
       this.timeOffset = body.epochMs - Math.round((t0 + t1) / 2); // round-trip adjusted
       this.online = true;
     } catch {
