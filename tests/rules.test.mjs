@@ -3,7 +3,7 @@
  * Covers: legal actions, invalid-action reasons, scoring components,
  * terminal states, serialization/migration, deterministic replay,
  * fuzzed malformed commands, and golden sessions.
- * Run: node tests/rules.test.js
+ * Run: node tests/rules.test.mjs
  */
 import * as R from '../js/rules.js';
 import * as C from '../js/content.js';
@@ -33,7 +33,9 @@ function eq(a, b, name) { ok(JSON.stringify(a) === JSON.stringify(b), `${name} (
     eq(r.error, R.ERR.NOT_FREE, 'blocked tile rejected with NOT_FREE');
   }
   // Unknown tile id.
-  eq(R.apply(R.cloneState(s), { t: 'tap', id: 9999 }).error, R.ERR.NOT_FOUND, 'unknown id rejected');
+  const rGone = R.apply(R.cloneState(s), { t: 'tap', id: 9999 });
+  eq(rGone.error, R.ERR.NOT_FOUND, 'unknown id rejected');
+  ok(rGone.events.some(e => e.type === 'invalid'), 'failed taps still emit their feedback events');
   // Malformed commands.
   eq(R.apply(R.cloneState(s), null).error, R.ERR.BAD_COMMAND, 'null command rejected');
   eq(R.apply(R.cloneState(s), { t: 'explode' }).error, R.ERR.BAD_COMMAND, 'unknown command rejected');
@@ -89,6 +91,31 @@ function eq(a, b, name) { ok(JSON.stringify(a) === JSON.stringify(b), `${name} (
     R.ERR.NO_UNDO, 'undo rejected when disabled');
 }
 
+/* ------------------------------------------- undo exact score revert */
+{
+  const s = R.init({ seed: 14, tier: 'medium', allowUndo: true });
+  // Remove several pairs to build a streak, capturing score along the way.
+  const snapshots = [R.totalScore(s)];
+  let removed = 0;
+  for (const [a, b] of R.legalPairs(s).slice(0, 4)) {
+    const sBefore = R.cloneState(s);
+    R.apply(s, { t: 'tap', id: a });
+    R.apply(s, { t: 'tap', id: b });
+    removed++;
+    snapshots.push(R.totalScore(s));
+    // Undo must restore the score exactly (layer + streak bonuses included).
+    R.apply(s, { t: 'undo' });
+    eq(R.totalScore(s), R.totalScore(sBefore) - R.SCORE.UNDO_PENALTY,
+      `undo #${removed} reverts pair/streak score exactly`);
+    eq(s.score.pairs, sBefore.score.pairs, `undo #${removed} reverts pair points`);
+    eq(s.score.streak, sBefore.score.streak, `undo #${removed} reverts streak points`);
+    // Redo the pair for the next iteration.
+    R.apply(s, { t: 'tap', id: a });
+    R.apply(s, { t: 'tap', id: b });
+  }
+  ok(removed > 0, 'undo score revert exercised');
+}
+
 /* ----------------------------------------------------------- shuffle */
 {
   const s = R.init({ seed: 9, tier: 'medium' });
@@ -129,15 +156,22 @@ function eq(a, b, name) { ok(JSON.stringify(a) === JSON.stringify(b), `${name} (
 
   // Move limit.
   const s3 = R.init({ seed: 1, tier: 'small', moveLimit: 1 });
-  R.apply(s3, { t: 'tap', id: R.freeTiles(s3)[0].id });
+  const rMove = R.apply(s3, { t: 'tap', id: R.freeTiles(s3)[0].id });
   eq(s3.status, 'lost', 'move limit enforced');
   eq(s3.reason, 'move-limit', 'move-limit reason');
+  ok(rMove.events.some(e => e.type === 'lost' && e.reason === 'move-limit'),
+    'move-limit loss emits a lost event');
 
   // Time limit.
   const s4 = R.init({ seed: 1, tier: 'small', timeLimitMs: 1000 });
-  R.apply(s4, { t: 'tick', ms: 1500 });
+  const rTime = R.apply(s4, { t: 'tick', ms: 1500 });
   eq(s4.status, 'lost', 'time limit enforced');
   eq(s4.reason, 'time-limit', 'time-limit reason');
+  ok(rTime.events.some(e => e.type === 'lost' && e.reason === 'time-limit'),
+    'time-limit loss emits a lost event');
+  // The event fires exactly once even with repeated limit checks.
+  const again = R.apply(s4, { t: 'tick', ms: 500 });
+  ok(!again.events.some(e => e.type === 'lost'), 'lost event not duplicated');
 
   // No-moves with shuffle disabled -> loss, unless solvable deal keeps pairs.
   const s5 = R.init({ seed: 77, tier: 'lesson', allowShuffle: false });

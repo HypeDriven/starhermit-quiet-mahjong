@@ -181,9 +181,14 @@ export function buildTiles(seed, tier) {
       alive.delete(a.id); alive.delete(b.id);
       pair++;
     } else {
-      // Defensive: break a deadlock on the topmost tile.
-      const top = cur.sort((a, b) => b.z - a.z)[0];
-      top.face = face; alive.delete(top.id);
+      // Defensive: break a deadlock by pairing the topmost tiles, keeping
+      // face counts even so the deal stays solvable.
+      const sorted = [...cur].sort((a, b) => b.z - a.z);
+      const a = free[0] || sorted[0];
+      const b = sorted.find(t => t !== a);
+      a.face = face; b.face = face;
+      alive.delete(a.id); alive.delete(b.id);
+      pair++;
     }
   }
   return tiles;
@@ -345,17 +350,19 @@ export const ERR = {
   TIME_LIMIT: 'time-limit-reached',
 };
 
-function fail(state, reason, detail) {
-  return { state, error: reason, detail, events: [] };
+function fail(state, reason, detail, events) {
+  return { state, error: reason, detail, events: events || [] };
 }
 
-function checkLimits(state) {
+function checkLimits(state, events) {
+  if (state.status !== 'active') return state.status === 'lost';
   const cfg = state.config;
-  if (state.status === 'active' && cfg.moveLimit != null && state.taps >= cfg.moveLimit) {
+  if (cfg.moveLimit != null && state.taps >= cfg.moveLimit) {
     state.status = 'lost'; state.reason = 'move-limit';
-  } else if (state.status === 'active' && cfg.timeLimitMs != null && state.elapsedMs >= cfg.timeLimitMs) {
+  } else if (cfg.timeLimitMs != null && state.elapsedMs >= cfg.timeLimitMs) {
     state.status = 'lost'; state.reason = 'time-limit';
   }
+  if (state.status === 'lost' && events) events.push({ type: 'lost', reason: state.reason });
   return state.status === 'lost';
 }
 
@@ -391,7 +398,7 @@ export function apply(state, cmd) {
       if (state.status !== 'active') return fail(state, ERR.NOT_ACTIVE);
       const ms = Math.max(0, Math.min(60000, Math.floor(cmd.ms || 0)));
       state.elapsedMs += ms;
-      checkLimits(state);
+      checkLimits(state, events);
       return { state, events };
     }
     case 'pause': {
@@ -406,26 +413,26 @@ export function apply(state, cmd) {
     }
     case 'tap': {
       if (state.status !== 'active') return fail(state, ERR.NOT_ACTIVE);
-      if (checkLimits(state)) return fail(state, ERR.MOVE_LIMIT);
+      if (checkLimits(state, events)) return fail(state, ERR.MOVE_LIMIT, undefined, events);
       const tile = state.tiles.find(t => t.id === cmd.id);
       if (!tile || tile.removed) {
         state.invalid++; state.score.penalties -= SCORE.INVALID_PENALTY;
         events.push({ type: 'invalid', reason: ERR.NOT_FOUND, id: cmd.id });
-        return fail(state, ERR.NOT_FOUND, cmd.id);
+        return fail(state, ERR.NOT_FOUND, cmd.id, events);
       }
       const live = liveTiles(state);
       if (!isFree(tile, live)) {
         state.invalid++; state.score.penalties -= SCORE.INVALID_PENALTY;
         state.taps++;
         events.push({ type: 'invalid', reason: ERR.NOT_FREE, id: tile.id });
-        checkLimits(state);
-        return fail(state, ERR.NOT_FREE, tile.id);
+        checkLimits(state, events);
+        return fail(state, ERR.NOT_FREE, tile.id, events);
       }
       state.taps++;
       if (state.selected == null) {
         state.selected = tile.id;
         events.push({ type: 'select', id: tile.id });
-        checkLimits(state);
+        checkLimits(state, events);
         return { state, events };
       }
       if (state.selected === tile.id) {
@@ -444,8 +451,8 @@ export function apply(state, cmd) {
         state.selected = tile.id;
         state.streak = 0;
         events.push({ type: 'invalid', reason: ERR.MISMATCH, id: tile.id, other: first.id });
-        checkLimits(state);
-        return fail(state, ERR.MISMATCH, { a: first.id, b: tile.id });
+        checkLimits(state, events);
+        return fail(state, ERR.MISMATCH, { a: first.id, b: tile.id }, events);
       }
       // Valid pair removal.
       first.removed = true; tile.removed = true;
@@ -454,12 +461,14 @@ export function apply(state, cmd) {
       state.streak++;
       state.noHintStreak++;
       state.bestStreak = Math.max(state.bestStreak, state.streak);
-      state.score.pairs += SCORE.PAIR + tile.z * SCORE.LAYER_BONUS;
-      state.score.streak += Math.min(state.streak - 1, 10) * SCORE.STREAK_STEP;
-      state.history.push({ a: first.id, b: tile.id });
+      const pairPts = SCORE.PAIR + tile.z * SCORE.LAYER_BONUS;
+      const streakPts = Math.min(state.streak - 1, 10) * SCORE.STREAK_STEP;
+      state.score.pairs += pairPts;
+      state.score.streak += streakPts;
+      state.history.push({ a: first.id, b: tile.id, pairPts, streakPts });
       events.push({ type: 'remove', ids: [first.id, tile.id], face: tile.face, streak: state.streak });
       finalizeIfTerminal(state, events);
-      checkLimits(state);
+      checkLimits(state, events);
       return { state, events };
     }
     case 'hint': {
@@ -485,7 +494,10 @@ export function apply(state, cmd) {
       state.undos++;
       state.streak = 0;
       state.score.penalties -= SCORE.UNDO_PENALTY;
-      state.score.pairs -= SCORE.PAIR;
+      // Revert the exact points this removal awarded (layer + streak bonuses
+      // included). Legacy saves without deltas fall back to the base value.
+      state.score.pairs -= last.pairPts ?? SCORE.PAIR;
+      state.score.streak -= last.streakPts ?? 0;
       events.push({ type: 'undo', ids: [last.a, last.b] });
       return { state, events };
     }
@@ -518,8 +530,12 @@ export function apply(state, cmd) {
           a.face = face; b.face = face;
           alive.delete(a.id); alive.delete(b.id);
         } else {
-          const top = cur.sort((a, b) => b.z - a.z)[0];
-          top.face = face; alive.delete(top.id);
+          // Defensive: pair the topmost tiles so face parity is preserved.
+          const sorted = [...cur].sort((a, b) => b.z - a.z);
+          const a = free[0] || sorted[0];
+          const b = sorted.find(t => t !== a);
+          a.face = face; b.face = face;
+          alive.delete(a.id); alive.delete(b.id);
         }
       }
       state.shuffles++;

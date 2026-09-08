@@ -58,7 +58,7 @@ try {
   await connect();
   await send('Runtime.enable');
   await send('Page.enable');
-  await send('Page.navigate', { url: 'http://localhost:8080/' });
+  await send('Page.navigate', { url: process.env.QM_TEST_BASE || 'http://localhost:8080/' });
   await sleep(2500);
 
   check(await evalJs(`document.getElementById('loading').hidden`), 'boot completes, loading hidden');
@@ -97,6 +97,50 @@ try {
   await sleep(300);
   check(removed, 'found a free pair in mirror');
   check(await evalJs(`document.getElementById('hud-progress').textContent.startsWith('1 /')`), 'pair removed, progress updates');
+
+  // Select → deselect → re-select the same tile (regression: a tile must be
+  // tappable any number of times; dedupe uses a dedicated command id).
+  // Note: the mirror rebuilds after every command, so re-query each step.
+  const toggle = await evalJs(`(() => {
+    const q = (id) => document.querySelector('#board-mirror [data-tile-id="' + id + '"]');
+    // Skip id 0 deliberately: a falsy id bypasses the dedupe check.
+    const first = [...document.querySelectorAll('#board-mirror button[data-free="true"]')]
+      .find(b => b.dataset.tileId !== '0');
+    if (!first) return 'no-free';
+    const id = first.dataset.tileId;
+    const pressed = () => q(id) && q(id).getAttribute('aria-pressed') === 'true';
+    q(id).click();
+    const p1 = pressed();
+    q(id).click();
+    const p2 = !pressed();
+    q(id).click();
+    const p3 = pressed();
+    q(id).click(); // leave deselected
+    return p1 && p2 && p3 ? 'ok' : 'stuck';
+  })()`);
+  await sleep(200);
+  check(toggle === 'ok', `same tile can be selected/deselected repeatedly (${toggle})`);
+
+  // Mismatch recovery: select A, tap non-matching B, then A must be
+  // selectable again (previously blocked by the dedupe collision).
+  const mismatch = await evalJs(`(() => {
+    const q = (id) => document.querySelector('#board-mirror [data-tile-id="' + id + '"]');
+    const free = [...document.querySelectorAll('#board-mirror button[data-free="true"]')]
+      .filter(b => b.dataset.tileId !== '0');
+    const a = free[0];
+    const b = free.find(x => x.textContent !== a.textContent);
+    if (!a || !b) return 'skipped';
+    const ia = a.dataset.tileId, ib = b.dataset.tileId;
+    q(ia).click();
+    q(ib).click(); // mismatch: selection moves to B
+    const bSelected = q(ib).getAttribute('aria-pressed') === 'true';
+    q(ia).click(); // previously rejected as a "duplicate"
+    const aWorks = q(ia).getAttribute('aria-pressed') === 'true';
+    q(ia).click(); // leave deselected
+    return bSelected && aWorks ? 'ok' : 'stuck';
+  })()`);
+  await sleep(200);
+  check(mismatch === 'ok' || mismatch === 'skipped', `re-tap after mismatch works (${mismatch})`);
 
   await evalJs(`document.getElementById('btn-hint').click()`);
   await sleep(200);

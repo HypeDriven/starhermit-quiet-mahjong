@@ -14,16 +14,16 @@
  * claims are rejected with a structured {"error":"..."} body. If a board
  * cannot be validated it is labelled casual.
  */
-'use strict';
+import http from 'node:http';
+import { dailyConfig } from './js/content.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-
-const ROOT = __dirname;
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8080);
-const DATA_DIR = path.join(ROOT, 'data');
+const DATA_DIR = process.env.QUIET_MAHJONG_DATA_DIR || path.join(ROOT, 'data');
 const BOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const ACH_FILE = path.join(DATA_DIR, 'achievements.json');
 
@@ -42,7 +42,7 @@ const MIME = {
 
 let R = null; // rules engine (ESM, loaded lazily)
 async function rules() {
-  if (!R) R = await import(path.join(ROOT, 'js', 'rules.js'));
+  if (!R) R = await import(new URL('./js/rules.js', import.meta.url));
   return R;
 }
 
@@ -111,15 +111,19 @@ async function validateScore(body, rules) {
   if (typeof sessionId !== 'string' || sessionId.length > 64) return { ok: false, error: 'bad-session' };
   if (!Number.isInteger(score) || score < -100000 || score > 1000000) return { ok: false, error: 'bad-score' };
   if (!config || typeof config !== 'object') return { ok: false, error: 'bad-config' };
-  if (!Array.isArray(commands) || commands.length > 5000) return { ok: false, error: 'bad-commands' };
+  if (!Array.isArray(commands) || commands.length > 10000) return { ok: false, error: 'bad-commands' };
   if (config.contentVersion !== rules.CONTENT_VERSION) return { ok: false, error: 'stale-version' };
 
   // Daily boards must use the published immutable seed.
+  if ((body.board === 'daily') !== (config.mode === 'daily')) return { ok: false, error: 'board-mode-mismatch' };
   if (config.mode === 'daily') {
     const date = config.dateIso || body.date;
     if (date !== utcToday()) return { ok: false, error: 'stale-daily' };
     const expect = rules.dailySeed(date);
     if (config.seed !== expect) return { ok: false, error: 'bad-seed' };
+    const expected = rules.init(dailyConfig(date, expect)).config;
+    const actual = rules.init(config).config;
+    if (body.date !== date || Object.keys(expected).some(k => actual[k] !== expected[k])) return { ok: false, error: 'daily-config-mismatch' };
   }
 
   const { state, errors } = rules.replay(config, commands);
@@ -195,7 +199,10 @@ const server = http.createServer(async (req, res) => {
           const friends = (url.searchParams.get('names') || '').split(',').filter(Boolean);
           entries = entries.filter(e => friends.includes(e.name));
         }
-        entries = entries.sort((a, b) => b.score - a.score).slice(0, 50);
+        // Tie-break per spec: score, then lower elapsed time, then stable id.
+        entries = entries.sort((a, b) => b.score - a.score ||
+          (a.durationMs || 0) - (b.durationMs || 0) ||
+          String(a.sessionId).localeCompare(String(b.sessionId))).slice(0, 50);
         return json(res, 200, { entries, label: 'validated' });
       }
 
@@ -248,10 +255,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (require.main === module) {
+const isMain = process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
   server.listen(PORT, () => {
     console.log(`Quiet Mahjong server listening on http://localhost:${PORT}`);
   });
 }
 
-module.exports = { server, validateScore };
+export { server, validateScore };

@@ -1,0 +1,9 @@
+{
+  "name": "quiet-mahjong",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/rules.test.mjs && node tools/validate-content.mjs",
+    "test:e2e": "node tests/e2e.mjs"
+  }
+}

@@ -637,6 +637,7 @@ const render = {
   },
 
   resetCamera() {
+    if (!this.ok) return; // 2-D compat mode has no camera
     this.camGoal.moving = false;
     this.frameCamera();
     audio.event('select');
@@ -749,8 +750,12 @@ const session = {
     this.commands = [];
     this.commandIds.clear();
     this.sessionId = uuid();
+    this.finished = false;
+    this.newUnlocks = [];
     this.lastTickAt = performance.now();
     render.hintIds = [];
+    // A new round overwrites the saved snapshot; drop the stale resume offer.
+    $('btn-resume-round')?.remove();
     ui.show('play');
     this.syncAll();
     ui.announce(`${config.mode} round started. ${this.state.tiles.length} tiles.`);
@@ -762,8 +767,10 @@ const session = {
   /** All simulation mutation goes through here. */
   command(cmd) {
     if (!this.state) return { error: 'no-round' };
-    if (cmd.id && this.commandIds.has(cmd.id)) return { error: 'duplicate' }; // idempotent
-    if (cmd.id) this.commandIds.add(cmd.id);
+    // Idempotent duplicate rejection uses a dedicated command id (cid) —
+    // tap commands carry a tile id in `id`, which must stay repeatable.
+    if (cmd.cid && this.commandIds.has(cmd.cid)) return { error: 'duplicate' };
+    if (cmd.cid) this.commandIds.add(cmd.cid);
     const r = R.apply(this.state, cmd);
     this.commands.push(cmd);
     this.handleEvents(r.events || []);
@@ -817,7 +824,7 @@ const session = {
   tick(now) {
     if (!this.state || this.state.status !== 'active') { this.lastTickAt = now; return; }
     const dt = now - this.lastTickAt;
-    if (dt >= 250) {
+    if (dt >= 1000) { // 1 s quantum keeps the replay log compact on long rounds
       this.lastTickAt = now;
       const before = this.state.status;
       this.command({ t: 'tick', ms: Math.floor(dt) });
@@ -827,6 +834,8 @@ const session = {
   },
 
   finish() {
+    if (this.finished) return; // terminal events fire once per round
+    this.finished = true;
     const s = this.state;
     analytics.push('round-end', { mode: s.config.mode, won: s.status === 'won', score: R.totalScore(s) });
     platform.activity('end');
@@ -899,7 +908,9 @@ function resumeSnapshot() {
   session.state = state;
   session.commands = [...snap.commands];
   session.sessionId = uuid();
+  session.finished = false;
   session.lastTickAt = performance.now();
+  $('btn-resume-round')?.remove();
   ui.show('play');
   session.syncAll();
   ui.toast('Round restored from your last safe snapshot.');
@@ -914,20 +925,23 @@ session.syncAll = function () {
 
 /* ===================================================== achievements */
 function unlock(key) {
-  if (progress.data.achievements[key]) return; // idempotent
+  if (progress.data.achievements[key]) return false; // idempotent
   progress.data.achievements[key] = Date.now();
   const def = C.ACHIEVEMENTS.find(a => a.key === key);
   ui.toast(`Achievement unlocked: ${def ? def.name : key}`);
   ui.announce(`Achievement unlocked: ${def ? def.name : key}`);
   if (platform.online) platform.api('/api/v1/achievements', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {});
+  return true;
 }
 function checkAchievements(s) {
-  unlock('first-clear');
-  if (s.hints === 0 && s.shuffles === 0 && s.undos === 0) unlock('mechanic-mastery');
-  if (s.bestStreak >= 8) unlock('streak-8');
-  if (session.contentRef?.mastery) unlock('mastery-stage');
-  if (Object.keys(progress.data.journey).length >= C.JOURNEY_STAGES.length) unlock('journey-40');
-  if (Object.keys(progress.data.dailies).length >= 7) unlock('daily-7');
+  session.newUnlocks = [];
+  const got = (key) => { if (unlock(key)) session.newUnlocks.push(key); };
+  got('first-clear');
+  if (s.hints === 0 && s.shuffles === 0 && s.undos === 0) got('mechanic-mastery');
+  if (s.bestStreak >= 8) got('streak-8');
+  if (session.contentRef?.mastery) got('mastery-stage');
+  if (Object.keys(progress.data.journey).length >= C.JOURNEY_STAGES.length) got('journey-40');
+  if (Object.keys(progress.data.dailies).length >= 7) got('daily-7');
   progress.save();
 }
 
@@ -994,6 +1008,8 @@ const ui = {
     $('btn-shuffle').disabled = !acts.shuffle;
     $('btn-undo').disabled = !acts.undo;
     $('btn-hint').setAttribute('aria-disabled', String(!acts.hint));
+    $('btn-shuffle').setAttribute('aria-disabled', String(!acts.shuffle));
+    $('btn-undo').setAttribute('aria-disabled', String(!acts.undo));
   },
 
   /** Accessible board mirror: one button per live tile, positioned over its
@@ -1061,7 +1077,10 @@ const ui = {
     $('results-total').textContent = String(R.totalScore(s));
     const statBits = [`Time ${fmtTime(s.elapsedMs)}`, `${s.hints} hints`, `${s.shuffles} shuffles`, `${s.invalid} invalid taps`, `best streak ${s.bestStreak}`];
     $('results-progress').textContent = statBits.join(' · ');
-    $('results-achievements').textContent = '';
+    $('results-achievements').textContent = (session.newUnlocks || []).length
+      ? 'Achievements: ' + session.newUnlocks
+          .map(k => (C.ACHIEVEMENTS.find(a => a.key === k) || { name: k }).name).join(' · ')
+      : '';
     const next = this.nextRecommendation();
     $('btn-next').hidden = !next;
     if (next) $('btn-next').textContent = next.label;
@@ -1334,7 +1353,6 @@ function setupPractice() {
     });
     host.appendChild(b);
   }
-  ui.show('modes'); // setup reachable via mode cards
   ui.show('setup');
 }
 
@@ -1422,10 +1440,23 @@ function startPending() {
   if (p.kind === 'practice') {
     cfg = { mode: 'practice', tier: p.tier, seed: (Math.random() * 0xffffffff) >>> 0,
       allowUndo: true, allowShuffle: true, allowHints: true, parMs: 8 * 60000 };
+  } else if (p.kind === 'journey') {
+    // List screen: Start continues at the first uncleared stage.
+    const done = progress.data.journey;
+    const st = C.JOURNEY_STAGES.find(s => !done[s.id]) || C.JOURNEY_STAGES[0];
+    cfg = { ...st.config };
+    ref = { stageId: st.id, mastery: st.mastery };
+    render.setTheme(C.themeById(st.theme));
   } else if (p.kind === 'journey-stage') {
     cfg = { ...p.stage.config };
     ref = { stageId: p.stage.id, mastery: p.stage.mastery };
     render.setTheme(C.themeById(p.stage.theme));
+  } else if (p.kind === 'challenge') {
+    // List screen: Start runs the first challenge.
+    const ch = C.CHALLENGES[0];
+    cfg = { ...ch.config };
+    ref = { challengeId: ch.id };
+    render.setTheme(C.themeById(ch.theme));
   } else if (p.kind === 'challenge-one') {
     cfg = { ...p.challenge.config };
     ref = { challengeId: p.challenge.id };
@@ -1601,6 +1632,7 @@ async function boot() {
   if (snap) {
     $('title-status').textContent = 'A round is in progress.';
     const b = document.createElement('button');
+    b.id = 'btn-resume-round';
     b.className = 'primary';
     b.textContent = 'Resume round';
     b.addEventListener('click', () => { audio.ensure(); resumeSnapshot(); });

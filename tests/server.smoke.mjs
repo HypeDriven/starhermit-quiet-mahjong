@@ -1,7 +1,8 @@
+import assert from 'node:assert/strict';
 import * as R from '../js/rules.js';
 import * as C from '../js/content.js';
 
-const base = 'http://localhost:8080';
+const base = process.env.QM_TEST_BASE || 'http://localhost:8080';
 const d = await (await fetch(base + '/api/v1/daily')).json();
 const cfg = { ...C.dailyConfig(d.date, d.seed), contentVersion: 1 };
 const s = R.init(cfg);
@@ -20,11 +21,16 @@ const entry = {
   seed: d.seed, tier: cfg.tier, assists: { hints: 0, shuffles: s.shuffles, undos: 0 },
   durationMs: s.elapsedMs, config: cfg, commands: cmds,
 };
-console.log('submit:', JSON.stringify(await (await post(entry)).json()));
-console.log('dupe:', JSON.stringify(await (await post(entry)).json()));
+const good = await post(entry); assert.equal(good.status, 200); assert.equal((await good.json()).ok, true);
+assert.equal((await (await post(entry)).json()).duplicate, true);
 const tampered = { ...entry, sessionId: 'other-' + Date.now(), score: entry.score + 5 };
 const r3 = await post(tampered);
-console.log('tampered:', r3.status, JSON.stringify(await r3.json()));
+assert.equal(r3.status, 422); assert.equal((await r3.json()).error, 'score-mismatch');
+for (const config of [{...entry.config, mode:'practice'}, {...entry.config, parMs:99999999}, {...entry.config, tier:'small'}]) {
+  const changed = await post({...entry, sessionId: 'changed-'+Math.random(), config});
+  assert.equal(changed.status,422);
+}
 const lb = await (await fetch(base + '/api/v1/leaderboard?board=daily&date=' + d.date)).json();
+assert.ok(lb.entries.some(e => e.sessionId === entry.sessionId));
 console.log('leaderboard:', JSON.stringify(lb.entries.map(e => [e.name, e.score])), 'label=' + lb.label);
 console.log('achievement:', JSON.stringify(await (await fetch(base + '/api/v1/achievements', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: 'first-clear' }) })).json()));
