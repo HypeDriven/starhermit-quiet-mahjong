@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node tests/rules.test.mjs && node tools/validate-content.mjs",
-    "test:e2e": "node tests/e2e.mjs"
+    "test:e2e": "node tests/e2e.mjs",
+    "test:hosted": "node tests/hosted-platform.check.mjs"
   }
 }

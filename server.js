@@ -1,7 +1,8 @@
 /**
- * Quiet Mahjong — authoritative StarHermit game script.
+ * Quiet Mahjong — local development / standalone backend.
  * Plain Node.js (no dependencies). Serves the static distribution and a
- * small /api surface:
+ * small /api surface used ONLY when the game runs from this server without
+ * a launch token (local dev, offline LAN play):
  *   GET  /api/v1/time         platform time for countdown/daily sync
  *   GET  /api/v1/daily        today's immutable seed + ruleset
  *   POST /api/v1/scores       replay-validated score submission
@@ -9,10 +10,12 @@
  *   POST /api/v1/achievements idempotent durable achievement delivery
  *   POST /api/v1/activity     playtime start/end pairing
  *
- * Scores are validated by replaying the ordered input log against the
- * deterministic rules engine (js/rules.js). Invalid or stale-version
- * claims are rejected with a structured {"error":"..."} body. If a board
- * cannot be validated it is labelled casual.
+ * On the real StarHermit host these routes do not exist; the client detects
+ * the launch token and uses the platform API instead (see js/main.js
+ * platform). Scores are validated by replaying the ordered input log
+ * against the deterministic rules engine (js/rules.js). Invalid or
+ * stale-version claims are rejected with a structured {"error":"..."}
+ * body. If a board cannot be validated it is labelled casual.
  */
 import http from 'node:http';
 import { dailyConfig } from './js/content.js';

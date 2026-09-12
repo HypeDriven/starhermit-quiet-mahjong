@@ -62,6 +62,7 @@ const settings = {
   },
   save() {
     try { localStorage.setItem('qm:settings:v1', JSON.stringify(this.data)); } catch { /* ok */ }
+    platform.scheduleCloud();
   },
 };
 
@@ -88,26 +89,145 @@ const progress = {
       doc.checksum = progressChecksum(doc);
       localStorage.setItem('qm:progress:v1', JSON.stringify(doc));
     } catch { /* ok */ }
+    platform.scheduleCloud();
   },
 };
 
+/* --------------------------------------- stored zip (cloud saves) */
+// Minimal ZIP writer/reader (stored entries only, no compression) used to
+// wrap the cloud-save document for /api/v1/me/cloud-saves/{slug}.
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function zipStore(name, dataBytes) {
+  const enc = new TextEncoder();
+  const nameB = enc.encode(name);
+  const crc = crc32(dataBytes);
+  const out = [];
+  const u16 = (v) => out.push(v & 0xff, (v >> 8) & 0xff);
+  const u32 = (v) => out.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+  u32(0x04034b50); u16(20); u16(0); u16(0); u16(0); u16(0);
+  u32(crc); u32(dataBytes.length); u32(dataBytes.length);
+  u16(nameB.length); u16(0);
+  const head = new Uint8Array(out);
+  const cd = [];
+  const c16 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff);
+  const c32 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+  c32(0x02014b50); c16(20); c16(20); c16(0); c16(0); c16(0); c16(0);
+  c32(crc); c32(dataBytes.length); c32(dataBytes.length);
+  c16(nameB.length); c16(0); c16(0); c16(0); c16(0); c32(0); c32(0); // attrs + local-header offset
+  const cdHead = new Uint8Array(cd);
+  const cdOff = head.length + nameB.length + dataBytes.length;
+  const parts = [head, nameB, dataBytes, cdHead, nameB];
+  const eocd = [];
+  const e32 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
+  const e16 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff);
+  e32(0x06054b50); e16(0); e16(0); e16(1); e16(1);
+  e32(cdHead.length + nameB.length); e32(cdOff); e16(0);
+  parts.push(new Uint8Array(eocd));
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const buf = new Uint8Array(total);
+  let o = 0;
+  for (const p of parts) { buf.set(p, o); o += p.length; }
+  return buf;
+}
+function unzipFirstEntry(zipBytes) {
+  // Stored single-entry reader: scan local headers for compression 0.
+  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+  let off = 0;
+  while (off + 30 <= zipBytes.length && dv.getUint32(off, true) === 0x04034b50) {
+    const method = dv.getUint16(off + 8, true);
+    const size = dv.getUint32(off + 18, true);
+    const nameLen = dv.getUint16(off + 26, true);
+    const extraLen = dv.getUint16(off + 28, true);
+    const dataOff = off + 30 + nameLen + extraLen;
+    if (method !== 0) throw new Error('unsupported zip entry');
+    return zipBytes.slice(dataOff, dataOff + size);
+  }
+  throw new Error('bad zip');
+}
+function bytesToBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function base64ToBytes(b64) {
+  const s = atob(b64);
+  const b = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+  return b;
+}
+
 /* ======================================================== platform */
-/** Token-aware REST adapter. Launch token is read from the URL and never
- * persisted. Same-origin /api routes when hosted; offline otherwise. */
+/** Token-aware REST adapter. The launch token arrives in the URL fragment
+ * (#game_token=<jwt>), is read once, stripped via history.replaceState and
+ * never persisted. Hosted mode — active iff a token was read — talks to the
+ * real StarHermit same-origin /api with Bearer auth: account profile
+ * nickname, one zip-wrapped cloud-save slot, read-only leaderboards and a
+ * 45-minute launch-token refresh. Without a token the game's own server.js
+ * is used when reachable (local dev); everything else degrades to fully
+ * local offline play. Query-param tokens are a local-dev fallback only. */
+function decodeJwtClaims(token) {
+  const parts = String(token).split('.');
+  if (parts.length < 2) return {};
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
+    return claims && typeof claims === 'object' ? claims : {};
+  } catch { return {}; }
+}
+
 const platform = {
-  online: false,
-  token: null,
+  online: false, // a backend answered (platform when hosted, else own server.js)
+  hosted: false, // true iff a launch token was read
+  token: null,   // current launch token (memory only)
+  userId: null,  // JWT sub
+  gameKey: null, // JWT game_scope (cloud-save slot and games lookups)
   timeOffset: 0,
+  cloudState: 'offline', // synced | saving | offline | error
+  _profiles: new Map(),  // userId -> display name (nicknames only)
+  _cloudTimer: null,
+
   async init() {
-    const url = new URL(location.href);
-    this.token = url.searchParams.get('token'); // short-lived launch token
-    if (url.searchParams.has('token')) {
-      url.searchParams.delete('token');
-      history.replaceState(null, '', url.pathname + url.search);
+    let token = null;
+    const frag = location.hash.match(/(?:^|[#&])game_token=([^&]+)/);
+    if (frag) {
+      token = decodeURIComponent(frag[1]);
+      history.replaceState(null, '', location.pathname + location.search);
     }
-    if (/^[0-9a-f-]{36}\.starhermit\.com$/i.test(location.hostname)) {
-      this.online = false;
-      this.timeOffset = 0;
+    if (!token) { // query fallback: local dev only
+      const url = new URL(location.href);
+      token = url.searchParams.get('token') || url.searchParams.get('launch_token') || url.searchParams.get('launch');
+      if (token) {
+        for (const k of ['token', 'launch_token', 'launch']) url.searchParams.delete(k);
+        history.replaceState(null, '', url.pathname + url.search);
+      }
+    }
+    if (token) {
+      this.token = token;
+      this.hosted = true;
+      this.online = true;
+      const claims = decodeJwtClaims(token);
+      this.userId = claims.sub || null;
+      this.gameKey = claims.game_scope || location.hostname.split('.')[0] || null;
+      this._scheduleRefresh();
+      addEventListener('pagehide', () => this.flushCloud());
+      document.addEventListener('visibilitychange', () => { if (document.hidden) this.flushCloud(); });
+      await this.profileFor(this.userId).catch(() => {}); // display name before first paint
+      this.cloudState = 'saving';
+      await this.loadCloud(); // remote wins conflicts; upload only when remote is empty
       return;
     }
     try {
@@ -125,8 +245,9 @@ const platform = {
   },
   now() { return Date.now() + this.timeOffset; },
   utcToday() { return new Date(this.now()).toISOString().slice(0, 10); },
-  headers() {
-    const h = { 'Content-Type': 'application/json' };
+  headers(json = true) {
+    const h = {};
+    if (json) h['Content-Type'] = 'application/json';
     if (this.token) h.Authorization = `Bearer ${this.token}`;
     return h;
   },
@@ -140,9 +261,121 @@ const platform = {
     }
     return body;
   },
+
+  /* ---- identity: nickname from the account profile (never /api/v1/me,
+     never usernames; "Player " + id8 fallback per the platform contract). */
+  async profileFor(userId) {
+    if (!userId) return 'Player ????????';
+    if (this._profiles.has(userId)) return this._profiles.get(userId);
+    let name = `Player ${String(userId).slice(0, 8)}`;
+    if (this.hosted) {
+      try {
+        const p = await this.api(`/api/v1/users/${encodeURIComponent(userId)}/profile`);
+        if (p && typeof p.nickname === 'string' && p.nickname.trim()) name = p.nickname.trim();
+      } catch { /* keep the fallback */ }
+    }
+    this._profiles.set(userId, name);
+    return name;
+  },
+  displayName() {
+    if (this.hosted) return this._profiles.get(this.userId) || `Player ${String(this.userId || '').slice(0, 8)}`;
+    return progress.data.name || 'Guest';
+  },
+
+  /* ---- launch-token refresh: scoped tokens may re-mint; swap in the new
+     token. Failures retry after ~60 s. */
+  _scheduleRefresh(delay = 45 * 60000) {
+    setTimeout(async () => {
+      let again = 45 * 60000;
+      try {
+        const res = await this.api(`/api/v1/games/${encodeURIComponent(this.gameKey)}/launch-token`, { method: 'POST' });
+        if (res && typeof res.token === 'string' && res.token) this.token = res.token;
+        if (this.cloudState === 'error') this.pushCloud(); // new token may fix the 401
+      } catch { again = 60000; }
+      if (this.hosted) this._scheduleRefresh(again);
+    }, delay);
+  },
+
+  /* ---- cloud save: one slot, zip+base64. localStorage remains the offline
+     cache; the cloud doc mirrors progress + settings, loaded remote-first. */
+  cloudDocBytes() {
+    const doc = { version: 1, progress: progress.data, settings: settings.data };
+    return zipStore('save.json', new TextEncoder().encode(JSON.stringify(doc)));
+  },
+  async loadCloud() {
+    if (!this.hosted || !this.gameKey) return;
+    try {
+      const res = await fetch(`/api/v1/me/cloud-saves/${encodeURIComponent(this.gameKey)}`, {
+        headers: this.headers(false), signal: AbortSignal.timeout(5000) });
+      if (res.status === 404) { // no remote save yet: seed it from the local copy
+        if (localStorage.getItem('qm:progress:v1')) await this.pushCloud();
+        else this.cloudState = 'synced';
+        ui.syncStatus();
+        return;
+      }
+      if (!res.ok) throw new Error(`http-${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const doc = JSON.parse(new TextDecoder().decode(unzipFirstEntry(bytes)));
+      this._applyCloudDoc(doc); // conflict: remote wins
+      this.cloudState = 'synced';
+    } catch {
+      this.cloudState = 'error'; // play from the local copy; retry on next save
+    }
+    ui.syncStatus();
+  },
+  _applyCloudDoc(doc) {
+    if (!doc || typeof doc !== 'object') return;
+    this._applyingCloud = true;
+    try {
+      if (doc.progress && typeof doc.progress === 'object') {
+        progress.data = { ...progress.data, ...doc.progress };
+        progress.save();
+      }
+      if (doc.settings && typeof doc.settings === 'object') {
+        settings.data = { ...settings.data, ...doc.settings, keys: { ...settings.data.keys, ...(doc.settings.keys || {}) } };
+        settings.save();
+        document.body.classList.toggle('high-contrast', settings.data.highContrast);
+        document.body.classList.toggle('large-text', settings.data.largeText);
+        document.body.classList.toggle('left-handed', settings.data.leftHanded);
+      }
+    } finally {
+      this._applyingCloud = false;
+    }
+  },
+  scheduleCloud() {
+    if (!this.hosted || this._applyingCloud) return;
+    this.cloudState = 'saving';
+    ui.syncStatus();
+    clearTimeout(this._cloudTimer);
+    this._cloudTimer = setTimeout(() => this.pushCloud(), 2000); // debounced
+  },
+  flushCloud() {
+    if (!this.hosted || !this._cloudTimer) return;
+    clearTimeout(this._cloudTimer);
+    this._cloudTimer = null;
+    this.pushCloud(); // best effort; the page may be going away
+  },
+  async pushCloud() {
+    if (!this.hosted || !this.gameKey) return;
+    this._cloudTimer = null;
+    try {
+      await this.api(`/api/v1/me/cloud-saves/${encodeURIComponent(this.gameKey)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ dataBase64: bytesToBase64(this.cloudDocBytes()) }),
+      });
+      this.cloudState = 'synced';
+    } catch {
+      this.cloudState = 'error';
+    }
+    ui.syncStatus();
+  },
+
+  /* ---- daily: the platform has no per-game daily route. Hosted mode uses
+     the same deterministic local seed (identical for everyone); the dev
+     server can pin or exclude days locally. */
   async getDaily() {
     const date = this.utcToday();
-    if (this.online) {
+    if (this.online && !this.hosted) {
       try {
         const d = await this.api('/api/v1/daily');
         return { date: d.date, seed: d.seed, excluded: !!d.excluded, config: C.dailyConfig(d.date, d.seed) };
@@ -152,24 +385,83 @@ const platform = {
     }
     return { date, seed: R.dailySeed(date), excluded: false, config: C.dailyConfig(date, R.dailySeed(date)) };
   },
+
+  /* ---- leaderboards: platform boards are read-only; the game's validated
+     routes are local-dev only. Local personal records always remain. */
+  async gameInfo() {
+    if (this._gameInfo !== undefined) return this._gameInfo;
+    try {
+      this._gameInfo = await this.api(`/api/v1/games/${encodeURIComponent(this.gameKey)}`);
+    } catch {
+      this._gameInfo = null;
+    }
+    return this._gameInfo;
+  },
+  async leaderboard(board, date) {
+    if (this.hosted) {
+      const info = await this.gameInfo();
+      const lbId = info && info.leaderboardId;
+      if (lbId && board !== 'daily') {
+        try {
+          const q = new URLSearchParams({ page: 1, pageSize: 20 });
+          if (board === 'friends') q.set('friendsOnly', 'true');
+          const data = await this.api(`/api/v1/leaderboards/${encodeURIComponent(lbId)}/entries?${q}`);
+          const items = Array.isArray(data.items) ? data.items : (Array.isArray(data.entries) ? data.entries : []);
+          const entries = await Promise.all(items.slice(0, 20).map(async (e) => {
+            const uid = e.userId ?? e.user_id ?? null;
+            return {
+              name: await this.profileFor(uid),
+              score: e.score ?? 0,
+              durationMs: e.elapsedMs ?? e.elapsed_ms ?? e.durationMs ?? 0,
+              mine: uid != null && uid === this.userId,
+            };
+          }));
+          return { entries, note: board === 'friends'
+            ? 'Platform friends board — read-only.'
+            : 'Platform board — read-only. Personal bests are kept in your profile.' };
+        } catch { /* fall through to local records */ }
+      }
+      return {
+        entries: localBoard.all(board),
+        note: lbId
+          ? 'Daily records are kept on this device; global and friends boards are platform-wide.'
+          : 'No platform board for this game yet — showing local records.',
+      };
+    }
+    if (this.online) {
+      try {
+        const res = await this.api(`/api/v1/leaderboard?board=${board}${date ? `&date=${date}` : ''}`);
+        return { entries: res.entries || [], note: 'Validated board — scores verified by replay on the server.' };
+      } catch { /* fall through to local */ }
+    }
+    return { entries: localBoard.all(board), note: 'Casual board — scores are recorded locally.' };
+  },
+
+  /* ---- scores: clients can never submit to a platform leaderboard. Hosted
+     wins stay local personal records; the dev server validates replays. */
   async submitScore(entry) {
-    if (!this.online) return { ok: false, local: true };
+    if (!this.online || this.hosted) return { ok: false, local: true };
     try {
       return await this.api('/api/v1/scores', { method: 'POST', body: JSON.stringify(entry) });
     } catch {
       return { ok: false, local: true };
     }
   },
-  async leaderboard(board, date) {
-    if (this.online) {
-      try { return await this.api(`/api/v1/leaderboard?board=${board}${date ? `&date=${date}` : ''}`); }
-      catch { /* fall through to local */ }
+
+  /* ---- achievements stay local on-platform (part of the cloud-saved
+     progress doc); the durable route is local-dev only. */
+  reportAchievement(key) {
+    if (this.online && !this.hosted) {
+      this.api('/api/v1/achievements', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {});
     }
-    return { entries: localBoard.all(board), label: 'casual' };
   },
+
+  /* ---- activity/presence: no platform route is reachable with launch
+     tokens; the local-dev server pairs start/end for its own telemetry. */
   activity(kind) {
-    if (!this.online) return;
-    this.api('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind }) }).catch(() => {});
+    if (this.online && !this.hosted) {
+      this.api('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind }) }).catch(() => {});
+    }
   },
 };
 
@@ -859,7 +1151,7 @@ const session = {
   async submitScore() {
     const s = this.state;
     const entry = {
-      name: progress.data.name || 'Guest',
+      name: platform.displayName(),
       sessionId: this.sessionId,
       board: s.config.mode === 'daily' ? 'daily' : 'global',
       date: s.config.dateIso || null,
@@ -930,7 +1222,7 @@ function unlock(key) {
   const def = C.ACHIEVEMENTS.find(a => a.key === key);
   ui.toast(`Achievement unlocked: ${def ? def.name : key}`);
   ui.announce(`Achievement unlocked: ${def ? def.name : key}`);
-  if (platform.online) platform.api('/api/v1/achievements', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {});
+  platform.reportAchievement(key);
   return true;
 }
 function checkAchievements(s) {
@@ -1114,15 +1406,13 @@ const ui = {
       tab.setAttribute('aria-selected', String(tab.dataset.board === board));
     }
     const res = await platform.leaderboard(board, platform.utcToday());
-    $('scores-note').textContent = res.label === 'casual' || !platform.online
-      ? 'Casual board — scores are recorded locally.'
-      : 'Validated board — scores verified by replay on the server.';
+    $('scores-note').textContent = res.note;
     const ol = $('scores-list');
     ol.textContent = '';
     for (const e of (res.entries || []).slice(0, 20)) {
       const li = document.createElement('li');
       li.textContent = `${e.name} — ${e.score} (${fmtTime(e.durationMs || 0)})`;
-      if (e.name === (progress.data.name || 'Guest')) li.classList.add('me');
+      if (e.mine || e.name === platform.displayName()) li.classList.add('me');
       ol.appendChild(li);
     }
     if (!ol.children.length) {
@@ -1133,8 +1423,30 @@ const ui = {
     this.show('scores');
   },
 
+  /** Small cloud-sync line on the profile screen (synced/saving/offline). */
+  syncStatus() {
+    const el = $('profile-sync');
+    if (!el) return;
+    if (!platform.hosted) {
+      el.textContent = platform.online ? '' : 'Progress is stored on this device only.';
+      return;
+    }
+    el.textContent = {
+      synced: 'Cloud save synced to your account.',
+      saving: 'Syncing progress to your account…',
+      offline: '',
+      error: 'Cloud sync failed — progress is safe locally and will retry on the next change.',
+    }[platform.cloudState] || '';
+  },
+
   showProfile() {
-    $('profile-name').value = progress.data.name || '';
+    const nameEl = $('profile-name');
+    nameEl.value = platform.hosted ? platform.displayName() : (progress.data.name || '');
+    nameEl.disabled = platform.hosted; // hosted identity comes from the account
+    $('profile-name-note').textContent = platform.hosted
+      ? 'Signed in with your StarHermit account; the name comes from your account profile.'
+      : '';
+    this.syncStatus();
     const st = progress.data.stats;
     $('profile-stats').textContent =
       `${st.rounds} rounds · ${st.wins} clears · best score ${st.bestScore} · ${st.pairsTotal} pairs total`;
@@ -1322,7 +1634,9 @@ function setupFacts(cfg, extra = []) {
       cfg.allowShuffle !== false ? 'shuffles' : null,
       cfg.allowUndo ? 'undo' : null,
     ].filter(Boolean).join(', ') || 'none'],
-    ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge') ? 'yes' : 'no'],
+    ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge')
+      ? (platform.hosted ? 'read-only board' : 'yes')
+      : 'no'],
     ...extra,
   ];
   const dl = $('setup-facts');
@@ -1415,7 +1729,9 @@ async function setupDaily() {
   $('setup-heading').textContent = `Daily — ${d.date}`;
   $('setup-description').textContent = d.excluded
     ? 'Today\'s board was marked defective and is excluded from ranking. You can still play it.'
-    : 'One shared seed for everyone, synchronized to platform time. Ranked.';
+    : platform.hosted
+      ? 'One shared seed for everyone (UTC day). Scores are kept as local records; global and friends boards are platform-wide and read-only.'
+      : 'One shared seed for everyone, synchronized to platform time. Ranked.';
   setupFacts(d.config, [['Seed', String(d.seed)], ['Board', R.LAYOUT_TIERS[d.config.tier].name]]);
   $('setup-options').textContent = '';
   ui.show('setup');
@@ -1518,6 +1834,7 @@ function wire() {
     tab.addEventListener('click', () => ui.showScores(tab.dataset.board));
   }
   $('profile-name').addEventListener('change', (e) => {
+    if (platform.hosted) return; // hosted identity comes from the account profile
     progress.data.name = e.target.value.slice(0, 24);
     progress.save();
   });
@@ -1638,7 +1955,11 @@ async function boot() {
     b.addEventListener('click', () => { audio.ensure(); resumeSnapshot(); });
     $('btn-play').after(b);
   }
-  $('title-status').textContent = (platform.online ? 'Connected to StarHermit.' : 'Offline — fully playable, scores kept locally.') +
+  $('title-status').textContent = (platform.hosted
+    ? `Signed in as ${platform.displayName()}.`
+    : platform.online
+      ? 'Connected to the local server.'
+      : 'Offline — fully playable, scores kept locally.') +
     (snap ? ' A round is in progress.' : '');
 
   ui.show('title');

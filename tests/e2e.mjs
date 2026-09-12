@@ -20,7 +20,7 @@
  * Every pair is removed via real interface clicks; no game code is changed
  * and no internal move API is called.
  *
- * Serving: the repo ships `server.js` (the StarHermit authoritative script
+ * Serving: the repo ships `server.js` (the local dev/standalone backend
  * declared by starhermit.txt), but the client is fully playable offline —
  * when `/api/v1/time` is unavailable it sets `hosted=false` and every
  * onboard mode (practice/journey/daily/challenge/learn/results) works
