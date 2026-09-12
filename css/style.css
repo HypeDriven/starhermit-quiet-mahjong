@@ -247,6 +247,9 @@ kbd { background: #22304f; border-radius: 4px; padding: 1px 6px; font-size: 0.85
   #hud-top { flex-direction: column; gap: 4px; background: none; max-width: 160px; }
   #hud-actions { flex-direction: column; align-items: flex-end; }
   .screen.play { flex-direction: row; }
+  /* instructions/toasts live in the left status rail column, off the tiles and actions */
+  .toast { left: calc(8px + var(--safe-left)); transform: none; bottom: calc(8px + var(--safe-bottom));
+    max-width: 160px; font-size: 0.85rem; padding: 6px 10px; text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {
