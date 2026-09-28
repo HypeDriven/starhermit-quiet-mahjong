@@ -8,6 +8,18 @@
  * the state snapshot; UI state and simulation state are separate.
  */
 import * as THREE from './three.module.min.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as G from './gfx.js';
+import { translator } from './gfx-i18n.js';
 import * as R from './rules.js';
 import * as C from './content.js';
 
@@ -40,7 +52,7 @@ const analytics = {
 /* ======================================================= settings */
 const DEFAULT_SETTINGS = {
   music: 60, effects: 80, ambience: 50, voice: 0, captions: false,
-  quality: 'medium', theme: 'moonlit-garden',
+  gfx: {}, theme: 'moonlit-garden',
   reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
   highContrast: false, largeText: false, leftHanded: false,
   holdToggle: true, haptics: true, palette: 'standard',
@@ -662,6 +674,118 @@ const audio = {
 /* ========================================================== render */
 const TILE_W = 1.0, TILE_H = 0.42, TILE_D = 1.34, GAP = 0.08;
 const LAYER_STEP = TILE_H + 0.06;
+// Tile texture layout: the face occupies the top of the canvas, a thin strip
+// at the bottom holds the two-tone side (ivory over a coloured backing).
+const TEX_W = 256, TEX_H = 400, TEX_FACE_H = 344;
+const FACE_V0 = 1 - TEX_FACE_H / TEX_H;
+
+/** Tile geometry whose UVs map the top plane to the face and the sides to the band. */
+function makeTileGeometry(rounded) {
+  const geo = rounded
+    ? new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, 3, 0.07)
+    : new THREE.BoxGeometry(TILE_W, TILE_H, TILE_D);
+  const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index;
+  // BoxGeometry planes (px, nx, py, ny, pz, nz) never share vertices, so each
+  // group identifies whether its vertices belong to the top, bottom or a side.
+  geo.groups.forEach((grp, plane) => {
+    for (let i = grp.start; i < grp.start + grp.count; i++) {
+      const v = index ? index.getX(i) : i;
+      const x = pos.getX(v), y = pos.getY(v), z = pos.getZ(v);
+      if (plane === 2) {
+        uv.setXY(v, x / TILE_W + 0.5, FACE_V0 + (0.5 - z / TILE_D) * (1 - FACE_V0));
+      } else if (plane === 3) {
+        uv.setXY(v, 0.5, 0.01);
+      } else {
+        uv.setXY(v, 0.5, (y / TILE_H + 0.5) * (FACE_V0 - 0.01) + 0.005);
+      }
+    }
+  });
+  uv.needsUpdate = true;
+  geo.clearGroups();
+  return geo;
+}
+
+/** Soft round sprite for stars, fireflies and match sparks. */
+function glowSprite() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.55)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/** Procedural stone/gravel texture (seeded, decoration stream only). */
+function noiseTexture(base, seed, { size = 256, speck = 0.18, veins = 0 } = {}) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const g = cv.getContext('2d');
+  const c = new THREE.Color(base);
+  g.fillStyle = '#' + c.getHexString();
+  g.fillRect(0, 0, size, size);
+  const rng = R.makeRng(seed, 'decor-tex');
+  const img = g.getImageData(0, 0, size, size);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (rng() - 0.5) * 2 * speck * 255 * (rng() < 0.08 ? 1.6 : 0.5);
+    d[i] = clamp(d[i] + n, 0, 255); d[i + 1] = clamp(d[i + 1] + n, 0, 255); d[i + 2] = clamp(d[i + 2] + n * 1.05, 0, 255);
+  }
+  g.putImageData(img, 0, 0);
+  // Soft mottling.
+  for (let i = 0; i < 70; i++) {
+    const x = rng() * size, y = rng() * size, r = 8 + rng() * 40;
+    const grad = g.createRadialGradient(x, y, 0, x, y, r);
+    const a = 0.04 + rng() * 0.06;
+    grad.addColorStop(0, rng() < 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a * 1.4})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  for (let i = 0; i < veins; i++) {
+    g.strokeStyle = `rgba(255,255,255,${0.02 + rng() * 0.025})`;
+    g.lineWidth = 0.6 + rng();
+    g.beginPath();
+    let x = rng() * size, y = rng() * size;
+    g.moveTo(x, y);
+    for (let k = 0; k < 6; k++) { x += (rng() - 0.5) * 70; y += (rng() - 0.5) * 70; g.lineTo(x, y); }
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Colour grade + vignette applied before the output transform. Kept gentle:
+// gameplay contrast (glyphs on ivory) must never drop.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uAmount: { value: 1.0 }, uVignette: { value: 0.26 } },
+  vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uAmount; uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = src.rgb;
+      vec3 lc = clamp(c, 0.0, 1.0);
+      // Gentle S-curve, a touch more saturation, cool shadows / warm highlights (moonlight + lanterns).
+      vec3 s = mix(lc, lc * lc * (3.0 - 2.0 * lc), 0.18);
+      float l = dot(s, vec3(0.299, 0.587, 0.114));
+      s = mix(vec3(l), s, 1.1);
+      s *= mix(vec3(0.95, 0.98, 1.06), vec3(1.03, 1.0, 0.97), smoothstep(0.15, 0.7, l));
+      c = mix(c, s + max(c - 1.0, 0.0), uAmount);
+      float d = length((vUv - 0.5) * vec2(1.1, 1.0));
+      c *= 1.0 - uVignette * smoothstep(0.38, 0.9, d);
+      gl_FragColor = vec4(c, src.a);
+    }`,
+};
 
 const render = {
   ok: false,
@@ -675,27 +799,35 @@ const render = {
   camGoal: { pos: new THREE.Vector3(), target: new THREE.Vector3(), moving: false },
   boardCenter: new THREE.Vector3(),
   hintIds: [], hintUntil: 0,
-  quality: 'medium',
+  quality: 'balanced',
   theme: C.THEMES[0],
+  // Graphics settings state.
+  q: null, saved: {}, detected: 'balanced', gpu: '',
+  composer: null, postKey: null, postFailed: false,
+  pixelRatio: 1, adaptiveScale: 1, frameTimes: [], fps: 0,
+  envTex: null, time: 0,
+  lanterns: [], fireflies: null, decor: null, titleAngle: 0.6,
 
   init() {
     try {
       const canvas = document.createElement('canvas');
       const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
       if (!gl) return false;
-      this.three = new THREE.WebGLRenderer({ antialias: settings.data.quality === 'high', powerPreference: 'default' });
+      // MSAA, when chosen, runs on a multisampled composer target so it can change live.
+      this.three = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'default' });
     } catch { return false; }
-    this.applyQuality(settings.data.quality);
+    this.detectGpu();
     this.three.outputColorSpace = THREE.SRGBColorSpace;
     this.three.toneMapping = THREE.ACESFilmicToneMapping;
     this.three.toneMappingExposure = 1.05;
+    this.three.shadowMap.type = THREE.PCFShadowMap;
     $('stage').appendChild(this.three.domElement);
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 200);
-    this.tileGeo = new THREE.BoxGeometry(TILE_W, TILE_H, TILE_D);
-    // Beveled edge illusion: slightly inset top face via second material slot.
     this.ringGeo = new THREE.RingGeometry(0.42, 0.55, 24);
+    this.spriteTex = glowSprite();
+    this.setGraphics(settings.data.gfx);
     this.buildEnvironment();
     this.resize();
     addEventListener('resize', () => this.resize());
@@ -703,56 +835,158 @@ const render = {
     return true;
   },
 
-  applyQuality(q) {
-    this.quality = q;
+  detectGpu() {
+    let gpu = '';
+    try {
+      const gl = this.three.getContext();
+      // Firefox already unmasks RENDERER and warns about the debug extension.
+      const ext = /firefox/i.test(navigator.userAgent) ? null : gl.getExtension('WEBGL_debug_renderer_info');
+      gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    } catch { gpu = ''; }
+    this.gpu = gpu;
+    const mobile = matchMedia('(pointer: coarse)').matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    this.detected = G.detectPreset(gpu, { mobile });
+  },
+
+  /** Apply saved graphics settings live (no reload). */
+  setGraphics(saved) {
+    this.saved = saved || {};
+    const prev = this.q;
+    const g = G.resolve(this.saved, this.detected);
+    this.q = g;
+    this.quality = g.preset;
+    const b = document.body.dataset;
+    b.gfxPreset = g.preset;
+    b.gfxAuto = String(g.auto);
+    for (const cat of Object.keys(G.CATEGORIES)) b['gfx' + cat[0].toUpperCase() + cat.slice(1)] = g[cat];
+    this.fpsVisible(g.showFps);
     if (!this.three) return;
-    const dprCap = q === 'high' ? 2 : q === 'medium' ? 1.5 : 1;
-    this.three.setPixelRatio(Math.min(devicePixelRatio || 1, dprCap));
-    this.three.shadowMap.enabled = q !== 'low';
-    this.three.shadowMap.type = THREE.PCFShadowMap;
+    const size = G.SHADOW_MAP[g.shadows];
+    const shadowToggled = this.three.shadowMap.enabled !== size > 0;
+    this.three.shadowMap.enabled = size > 0;
+    this.applyShadow();
+    this.adaptiveScale = 1;
+    this.frameTimes = [];
+    this.postKey = null; // rebuild the post chain on the next frame
+    this.postFailed = false;
+    if (prev && this.ok && (prev.detail !== g.detail || prev.reflections !== g.reflections)) {
+      this.setTheme(this.theme); // geometry, textures and environment differ: rebuild
+    } else if (shadowToggled && this.scene) {
+      // Materials pick up shadow-map changes on recompile.
+      this.scene.traverse((o) => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+    }
+    if (this.fireflies) this.fireflies.visible = g.background === 'animated';
+  },
+
+  applyShadow() {
+    const moon = this.moon;
+    if (!moon || !this.q) return;
+    const size = G.SHADOW_MAP[this.q.shadows];
+    moon.castShadow = size > 0;
+    if (size > 0 && moon.shadow.mapSize.x !== size) {
+      moon.shadow.mapSize.set(size, size);
+      moon.shadow.map?.dispose();
+      moon.shadow.map = null;
+    }
+    moon.shadow.radius = this.q.shadows === 'low' ? 1 : 2;
+  },
+
+  /** Fit the moon's shadow frustum tightly around the play area. */
+  fitShadow(radius) {
+    const cam = this.moon?.shadow.camera;
+    if (!cam) return;
+    const r = Math.max(2, radius);
+    cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
+    cam.near = 4; cam.far = 40;
+    cam.updateProjectionMatrix();
+  },
+
+  environmentMap() {
+    if (this.envTex) return this.envTex;
+    const pmrem = new THREE.PMREMGenerator(this.three);
+    const room = new RoomEnvironment();
+    this.envTex = pmrem.fromScene(room, 0.04).texture;
+    room.traverse((o) => { o.geometry?.dispose(); if (o.material) for (const m of [].concat(o.material)) m.dispose(); });
+    pmrem.dispose();
+    return this.envTex;
   },
 
   buildEnvironment() {
     const t = this.theme;
     const s = this.scene;
+    const g = this.q;
+    const detailed = g.detail === 'detailed';
     s.background = new THREE.Color(t.sky);
     s.fog = new THREE.Fog(t.fog, 30, 90);
+    s.environment = g.reflections === 'on' ? this.environmentMap() : null;
+    s.environmentIntensity = 0.28;
+    this.tileGeo?.dispose();
+    this.tileGeo = makeTileGeometry(detailed);
 
-    // Key light: the moon.
-    const moon = new THREE.DirectionalLight(0xcfe0ff, 1.6);
+    // Key light: the moon, with a shadow frustum fitted to the table/board.
+    const moon = new THREE.DirectionalLight(0xcfe0ff, detailed ? 1.7 : 1.6);
     moon.position.set(-8, 14, 6);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(1024, 1024);
-    moon.shadow.camera.left = -12; moon.shadow.camera.right = 12;
-    moon.shadow.camera.top = 12; moon.shadow.camera.bottom = -12;
-    s.add(moon);
-    s.add(new THREE.AmbientLight(t.glow, 0.25));
-    const fill = new THREE.HemisphereLight(t.accent, t.ground, 0.35);
-    s.add(fill);
+    moon.shadow.bias = -0.0006;
+    moon.shadow.normalBias = 0.02;
+    this.moon = moon;
+    this.applyShadow();
+    this.fitShadow(10);
+    s.add(moon, moon.target);
+    s.add(new THREE.AmbientLight(t.glow, detailed ? 0.18 : 0.25));
+    s.add(new THREE.HemisphereLight(t.accent, t.ground, detailed ? 0.5 : 0.35));
 
     // Ground.
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(60, 40),
-      new THREE.MeshStandardMaterial({ color: t.ground, roughness: 1 }));
+    const groundMat = new THREE.MeshStandardMaterial({ color: t.ground, roughness: 1 });
+    if (detailed) {
+      groundMat.map = noiseTexture(t.ground, 11, { speck: 0.22 });
+      groundMat.map.repeat.set(14, 14);
+      groundMat.color.set(0xffffff);
+    }
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 40), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.55;
     ground.receiveShadow = true;
     s.add(ground);
 
-    // Table.
-    const table = new THREE.Mesh(
-      new THREE.CylinderGeometry(9.5, 8.5, 0.5, 40),
-      new THREE.MeshStandardMaterial({ color: t.table, roughness: 0.85, metalness: 0.05 }));
+    // Table: plain slab, or a textured stone slab with a carved rim.
+    const tableMat = new THREE.MeshStandardMaterial({ color: t.table, roughness: 0.85, metalness: 0.05 });
+    if (detailed) {
+      tableMat.map = noiseTexture(t.table, 7, { size: 512, speck: 0.07, veins: 8 });
+      tableMat.map.repeat.set(2, 2);
+      tableMat.color.set(0xffffff);
+      tableMat.roughness = 0.72;
+    }
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 8.5, 0.5, detailed ? 72 : 40), tableMat);
     table.position.y = -0.3;
     table.receiveShadow = true;
     s.add(table);
+    if (detailed) {
+      const rimMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.table).multiplyScalar(0.7), roughness: 0.6, metalness: 0.1 });
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(9.5, 0.16, 12, 96), rimMat);
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = -0.06;
+      rim.receiveShadow = true;
+      s.add(rim);
+      const pedestal = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4.2, 0.6, 40), rimMat);
+      pedestal.position.y = -0.8;
+      s.add(pedestal);
+    }
 
     // Garden props, procedurally placed with a decoration-only stream.
     const rng = R.makeRng(2024, 'decor');
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x3a4358, roughness: 1 });
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x3a4358, roughness: 1, flatShading: detailed });
     for (let i = 0; i < 14; i++) {
       const r = 0.3 + rng() * 0.9;
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), rockMat);
+      const geo = new THREE.IcosahedronGeometry(r, detailed ? 1 : 0);
+      if (detailed) {
+        const p = geo.attributes.position;
+        for (let k = 0; k < p.count; k++) {
+          const f = 0.82 + rng() * 0.3;
+          p.setXYZ(k, p.getX(k) * f, p.getY(k) * f * 0.8, p.getZ(k) * f);
+        }
+        geo.computeVertexNormals();
+      }
+      const rock = new THREE.Mesh(geo, rockMat);
       const ang = rng() * Math.PI * 2;
       const dist = 11 + rng() * 14;
       rock.position.set(Math.cos(ang) * dist, -0.55 + r * 0.5, Math.sin(ang) * dist);
@@ -760,25 +994,105 @@ const render = {
       rock.castShadow = true;
       s.add(rock);
     }
-    // Lanterns.
-    const lanternMat = new THREE.MeshStandardMaterial({
-      color: 0x553311, emissive: new THREE.Color(t.glow), emissiveIntensity: 0.9, roughness: 0.6 });
+
+    // Paper lanterns on dark poles; each owns a warm point light.
+    this.lanterns = [];
+    const glow = new THREE.Color(t.glow);
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.9 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0x1a1d24, roughness: 0.7 });
     for (const [x, z] of [[-10, -7], [10.5, -5], [0, 13]]) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 8),
-        new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.9 }));
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 8), poleMat);
       pole.position.set(x, 0.75, z);
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), lanternMat);
+      const lampMat = new THREE.MeshStandardMaterial({
+        color: 0x553311, emissive: glow, emissiveIntensity: detailed ? 1.6 : 0.9, roughness: 0.6 });
+      let lamp;
+      if (detailed) {
+        lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.62, 20, 1), lampMat);
+        lamp.scale.set(1, 1, 1);
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.4, 0.14, 20), capMat);
+        top.position.set(x, 2.58, z);
+        const bot = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.2, 0.1, 20), capMat);
+        bot.position.set(x, 1.86, z);
+        s.add(top, bot);
+      } else {
+        lamp = new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), lampMat);
+      }
       lamp.position.set(x, 2.2, z);
       const light = new THREE.PointLight(t.glow, 2.5, 9);
       light.position.set(x, 2.3, z);
       s.add(pole, lamp, light);
+      this.lanterns.push({ lamp, light, base: lampMat.emissiveIntensity, phase: x * 1.7 + z });
     }
-    // Moon disc in the sky.
-    const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(2.2, 32),
-      new THREE.MeshBasicMaterial({ color: 0xf4f0e2 }));
+
+    // Moon disc in the sky (bright enough to bloom) with a soft halo.
+    const moonDisc = new THREE.Mesh(new THREE.CircleGeometry(2.2, 48),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(0xf4f0e2).multiplyScalar(detailed ? 1.5 : 1), fog: false }));
     moonDisc.position.set(-26, 26, -34);
     moonDisc.lookAt(0, 4, 0);
     s.add(moonDisc);
+    if (detailed) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.spriteTex, color: 0xbfd2ff, transparent: true, opacity: 0.35,
+        blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      halo.position.copy(moonDisc.position).multiplyScalar(1.01);
+      halo.scale.setScalar(16);
+      s.add(halo);
+      // Static star field on the upper sky.
+      const n = 360;
+      const arr = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2, e = 0.12 + rng() * 1.3;
+        arr[i * 3] = Math.cos(a) * Math.cos(e) * 90;
+        arr[i * 3 + 1] = Math.sin(e) * 90;
+        arr[i * 3 + 2] = Math.sin(a) * Math.cos(e) * 90;
+      }
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      const stars = new THREE.Points(sg, new THREE.PointsMaterial({
+        map: this.spriteTex, color: 0xdfe8ff, size: 2.2, sizeAttenuation: false,
+        transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+      s.add(stars);
+    }
+
+    // Fireflies: slow, bounded, cosmetic (never raycast).
+    {
+      const n = 42;
+      const arr = new Float32Array(n * 3);
+      const seeds = [];
+      for (let i = 0; i < n; i++) {
+        const a = rng() * Math.PI * 2, d = 6 + rng() * 12;
+        seeds.push({ x: Math.cos(a) * d, z: Math.sin(a) * d, y: 0.6 + rng() * 2.6, p: rng() * 10, s: 0.3 + rng() * 0.5 });
+      }
+      const fg = new THREE.BufferGeometry();
+      fg.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      this.fireflies = new THREE.Points(fg, new THREE.PointsMaterial({
+        map: this.spriteTex, color: new THREE.Color(t.glow).lerp(new THREE.Color(0xffe27a), 0.7).multiplyScalar(1.5),
+        size: 0.14, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      this.fireflies.userData.seeds = seeds;
+      this.fireflies.frustumCulled = false;
+      this.fireflies.visible = g.background === 'animated';
+      this.updateFireflies(0);
+      s.add(this.fireflies);
+    }
+
+    // Decorative tiles shown on the table behind the title menu.
+    this.decor = new THREE.Group();
+    {
+      const faces = Object.keys(R.FACE_NAMES);
+      const drng = R.makeRng(77, 'decor-title');
+      const spots = [[-1, 0, 0], [0, 0, 0], [1, 0, 0], [-0.5, 1, 0], [0.5, 1, 0], [0, 2, 0],
+        [-1, 0, 1], [0, 0, 1], [1, 0, 1], [-0.5, 1, 1], [0.5, 1, 1]];
+      spots.forEach(([cx, layer, row]) => {
+        const face = faces[Math.floor(drng() * faces.length)];
+        const mesh = new THREE.Mesh(this.tileGeo, this.tileMaterial(face));
+        mesh.position.set(cx * (TILE_W + GAP) + (row ? 0.3 : 0), layer * LAYER_STEP + TILE_H / 2, row * (TILE_D + GAP) - 0.6);
+        mesh.rotation.y = (drng() - 0.5) * 0.08;
+        mesh.castShadow = mesh.receiveShadow = true;
+        this.decor.add(mesh);
+      });
+    }
+    this.decor.visible = !session.state;
+    s.add(this.decor);
 
     // Selection marker ring.
     this.marker = new THREE.Mesh(this.ringGeo,
@@ -791,7 +1105,10 @@ const render = {
     const pGeo = new THREE.BufferGeometry();
     const MAXP = 400;
     pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3));
-    const pMat = new THREE.PointsMaterial({ color: t.accent, size: 0.09, transparent: true, opacity: 0.85, depthWrite: false });
+    const pMat = new THREE.PointsMaterial({
+      color: new THREE.Color(t.accent).multiplyScalar(detailed ? 1.6 : 1), size: detailed ? 0.16 : 0.09,
+      map: detailed ? this.spriteTex : null, transparent: true, opacity: 0.9, depthWrite: false,
+      blending: detailed ? THREE.AdditiveBlending : THREE.NormalBlending });
     this.particles = new THREE.Points(pGeo, pMat);
     this.particles.frustumCulled = false;
     this.particleData = [];
@@ -803,37 +1120,85 @@ const render = {
     if (!this.scene) return;
     document.body.dataset.theme = theme.id;
     const s = this.scene;
+    s.traverse((o) => {
+      if (o.geometry && o.geometry !== this.tileGeo && o.geometry !== this.ringGeo) o.geometry.dispose();
+      if (o.material) for (const m of [].concat(o.material)) { if (m.map && m.map !== this.spriteTex && !this.isFaceTex(m.map)) m.map.dispose(); m.dispose(); }
+    });
     s.clear();
     this.tiles.clear();
+    for (const tex of this.faceTex.values()) tex.dispose();
     this.faceTex.clear();
     this.buildEnvironment();
     if (session.state) this.syncBoard(session.state);
   },
 
+  isFaceTex(tex) {
+    for (const t of this.faceTex.values()) if (t === tex) return true;
+    return false;
+  },
+
+  tileMaterial(face) {
+    const map = this.faceTexture(face);
+    if (this.q.detail === 'detailed') {
+      return new THREE.MeshPhysicalMaterial({
+        map, roughness: 0.42, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.2,
+      });
+    }
+    return new THREE.MeshStandardMaterial({ map, roughness: 0.35, metalness: 0.02 });
+  },
+
   faceTexture(face) {
     if (this.faceTex.has(face)) return this.faceTex.get(face);
     const cv = document.createElement('canvas');
-    cv.width = 128; cv.height = 168;
+    cv.width = TEX_W; cv.height = TEX_H;
     const g = cv.getContext('2d');
     const t = this.theme;
+    const detailed = this.q?.detail === 'detailed';
     const ceramic = '#' + new THREE.Color(t.tile).getHexString();
     const edge = '#' + new THREE.Color(t.tileEdge).getHexString();
+    const FW = TEX_W, FH = TEX_FACE_H;
     g.fillStyle = ceramic;
-    g.fillRect(0, 0, 128, 168);
-    g.strokeStyle = edge; g.lineWidth = 6;
-    g.strokeRect(5, 5, 118, 158);
+    g.fillRect(0, 0, FW, FH);
+    if (detailed) {
+      // Glaze: soft top-left sheen and faint speckle; never over the glyph area's contrast.
+      const sheen = g.createLinearGradient(0, 0, FW, FH);
+      sheen.addColorStop(0, 'rgba(255,255,255,0.22)');
+      sheen.addColorStop(0.5, 'rgba(255,255,255,0)');
+      sheen.addColorStop(1, 'rgba(0,0,0,0.06)');
+      g.fillStyle = sheen;
+      g.fillRect(0, 0, FW, FH);
+      const rng = R.makeRng(face.length * 131 + face.charCodeAt(0), 'decor-glaze');
+      for (let i = 0; i < 220; i++) {
+        g.fillStyle = `rgba(90,80,70,${0.04 + rng() * 0.06})`;
+        g.fillRect(rng() * FW, rng() * FH, 1.5, 1.5);
+      }
+    }
+    g.strokeStyle = edge; g.lineWidth = 12;
+    g.strokeRect(10, 10, FW - 20, FH - 20);
+    if (detailed) {
+      g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 2;
+      g.strokeRect(19, 19, FW - 38, FH - 38);
+    }
     // Family color band (color reinforced by glyph shape + name in DOM).
     const famColors = PALETTES[settings.data.palette] || PALETTES.standard;
     const fam = face.split('-')[0];
     g.fillStyle = famColors[fam] || '#557';
-    g.fillRect(10, 138, 108, 16);
+    g.fillRect(20, 282, FW - 40, 32);
     g.fillStyle = '#1a2030';
-    g.font = '72px serif';
+    g.font = '144px serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(R.faceGlyph(face), 64, 78);
+    g.fillText(R.faceGlyph(face), FW / 2, 150);
+    // Side band: ivory body over a coloured backing, like a two-layer tile.
+    const back = new THREE.Color(t.glow).lerp(new THREE.Color(t.table), 0.45);
+    g.fillStyle = ceramic;
+    g.fillRect(0, FH, FW, TEX_H - FH);
+    g.fillStyle = '#' + new THREE.Color(t.tileEdge).getHexString();
+    g.fillRect(0, FH + 26, FW, 3);
+    g.fillStyle = '#' + back.getHexString();
+    g.fillRect(0, FH + 29, FW, TEX_H - FH - 29);
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.anisotropy = detailed ? 8 : 4;
     this.faceTex.set(face, tex);
     return tex;
   },
@@ -848,6 +1213,7 @@ const render = {
 
   syncBoard(state) {
     if (!this.ok) return;
+    if (this.decor) this.decor.visible = false;
     // Board span for centering.
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
     for (const t of state.tiles) {
@@ -855,6 +1221,7 @@ const render = {
       minY = Math.min(minY, t.y); maxY = Math.max(maxY, t.y);
     }
     this.boardSpan = { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w: maxX - minX + 2, h: maxY - minY + 2 };
+    this.fitShadow(Math.hypot(this.boardSpan.w * (TILE_W / 2 + GAP), this.boardSpan.h * (TILE_D / 2 + GAP)) / 2 + 1.5);
 
     const seen = new Set();
     const free = new Set(R.freeTiles(state).map(t => t.id));
@@ -866,10 +1233,7 @@ const render = {
         continue;
       }
       if (!entry) {
-        const mat = new THREE.MeshStandardMaterial({
-          map: this.faceTexture(tile.face), roughness: 0.35, metalness: 0.02,
-        });
-        const mesh = new THREE.Mesh(this.tileGeo, mat);
+        const mesh = new THREE.Mesh(this.tileGeo, this.tileMaterial(tile.face));
         mesh.castShadow = true; mesh.receiveShadow = true;
         mesh.userData.tileId = tile.id;
         const ring = new THREE.Mesh(this.ringGeo,
@@ -892,14 +1256,15 @@ const render = {
       entry.mesh.position.set(p.x, p.y + (selected ? 0.16 : 0), p.z);
       entry.ring.position.set(p.x, tile.z * LAYER_STEP + 0.02, p.z);
       entry.ring.visible = free.has(tile.id) && !selected;
-      entry.mesh.material.emissive = new THREE.Color(
-        selected ? this.theme.accent : hinted ? this.theme.glow : 0x000000);
-      entry.mesh.material.emissiveIntensity = selected ? 0.5 : hinted ? 0.35 : 0;
+      entry.mesh.material.emissive.setHex(selected ? this.theme.accent : hinted ? this.theme.glow : 0x000000);
+      // Detailed tiles are brighter (clear-coat + bloom): a softer glow keeps the glyph readable.
+      const soft = this.q.detail === 'detailed';
+      entry.mesh.material.emissiveIntensity = selected ? (soft ? 0.1 : 0.5) : hinted ? (soft ? 0.1 : 0.35) : 0;
       entry.mesh.userData.free = free.has(tile.id);
     }
     // Hide meshes for tiles no longer in state (defensive).
     for (const [id, entry] of this.tiles) {
-      if (!seen.has(id)) { this.scene.remove(entry.mesh, entry.ring); this.tiles.delete(id); }
+      if (!seen.has(id)) { this.scene.remove(entry.mesh, entry.ring); entry.mesh.material.dispose(); entry.ring.material.dispose(); this.tiles.delete(id); }
     }
     // Marker under selection.
     if (state.selected != null) {
@@ -912,6 +1277,19 @@ const render = {
     } else this.marker.visible = false;
 
     this.frameCamera();
+  },
+
+  /** Drop the board meshes (round left) so the title scene shows again. */
+  clearBoard() {
+    if (!this.ok) return;
+    for (const entry of this.tiles.values()) {
+      this.scene.remove(entry.mesh, entry.ring);
+      entry.mesh.material.dispose(); entry.ring.material.dispose();
+    }
+    this.tiles.clear();
+    this.marker.visible = false;
+    this.fitShadow(10);
+    if (this.decor) this.decor.visible = true;
   },
 
   frameCamera() {
@@ -928,6 +1306,18 @@ const render = {
     }
   },
 
+  /** Title/menu view: a slow orbit around the garden table. */
+  titleCamera(dt) {
+    const animate = this.q.background === 'animated' && !settings.data.reducedMotion;
+    if (animate) this.titleAngle += dt * 0.05;
+    const a = this.titleAngle;
+    const aspect = innerWidth / Math.max(1, innerHeight);
+    const dist = aspect < 1 ? 27 : 20;
+    this.camera.position.set(Math.sin(a) * dist, aspect < 1 ? 9 : 6.5, Math.cos(a) * dist);
+    this.camera.lookAt(0, aspect < 1 ? 1.5 : 2.2, 0);
+    this.camGoal.moving = false;
+  },
+
   resetCamera() {
     if (!this.ok) return; // 2-D compat mode has no camera
     this.camGoal.moving = false;
@@ -936,9 +1326,9 @@ const render = {
   },
 
   burst(x, y, z) {
-    if (settings.data.reducedMotion || this.quality === 'low') return;
+    const cap = G.PARTICLE_BURST[this.q?.particles] || 0;
+    if (settings.data.reducedMotion || !cap) return;
     const rng = R.makeRng(Math.floor(x * 97 + z * 131 + performance.now() % 1000), 'vfx');
-    const cap = this.quality === 'high' ? 60 : 30;
     for (let i = 0; i < cap && this.particleData.length < 400; i++) {
       this.particleData.push({
         x, y, z,
@@ -965,6 +1355,34 @@ const render = {
     this.particleData.length = n;
     pos.needsUpdate = true;
     this.particles.geometry.setDrawRange(0, n);
+  },
+
+  updateFireflies(time) {
+    const f = this.fireflies;
+    if (!f) return;
+    const arr = f.geometry.attributes.position.array;
+    f.userData.seeds.forEach((s, i) => {
+      const k = time * s.s + s.p;
+      arr[i * 3] = s.x + Math.sin(k * 0.7) * 1.4;
+      arr[i * 3 + 1] = s.y + Math.sin(k * 1.3) * 0.5;
+      arr[i * 3 + 2] = s.z + Math.cos(k * 0.5) * 1.4;
+    });
+    f.geometry.attributes.position.needsUpdate = true;
+    f.material.opacity = 0.75 + 0.25 * Math.sin(time * 2.1);
+  },
+
+  // Gentle ambient motion: lantern flicker and drifting fireflies.
+  updateAmbient(dt) {
+    const animate = this.q.background === 'animated' && !settings.data.reducedMotion;
+    if (this.fireflies) this.fireflies.visible = animate;
+    if (!animate) return;
+    this.time += dt;
+    this.updateFireflies(this.time);
+    for (const l of this.lanterns) {
+      const k = 1 + 0.06 * Math.sin(this.time * 3.1 + l.phase) + 0.04 * Math.sin(this.time * 7.3 + l.phase * 2);
+      l.lamp.material.emissiveIntensity = l.base * k;
+      l.light.intensity = 2.5 * k;
+    }
   },
 
   // Critically damped, interruptible camera motion — never cumulative lerp.
@@ -999,17 +1417,137 @@ const render = {
 
   resize() {
     if (!this.three) return;
-    this.three.setSize(innerWidth, innerHeight);
+    this.applySize(true);
     this.camera.aspect = innerWidth / Math.max(1, innerHeight);
     this.camera.updateProjectionMatrix();
     if (session.state) this.frameCamera();
   },
 
+  /** Pixel ratio = min(dpr, preset cap) × preset/render scale × adaptive scale. */
+  applySize(force) {
+    const g = this.q;
+    const ratio = Math.min(3, Math.min(devicePixelRatio || 1, g.dprCap) * g.scale * this.adaptiveScale);
+    const w = innerWidth, h = innerHeight;
+    if (force || ratio !== this.pixelRatio || w !== this.size?.[0] || h !== this.size?.[1]) {
+      this.pixelRatio = ratio;
+      this.size = [w, h];
+      this.three.setPixelRatio(ratio);
+      this.three.setSize(w, h);
+    }
+  },
+
+  fpsVisible(on) {
+    let el = document.getElementById('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      document.body.append(el);
+    }
+    if (el) el.hidden = !on;
+  },
+
+  /** What the Graphics panel shows: GPU, auto choice, resolved tiers, cost. */
+  graphicsInfo(t) {
+    const size = this.size || [innerWidth, innerHeight];
+    const px = [Math.round(size[0] * this.pixelRatio), Math.round(size[1] * this.pixelRatio)];
+    return {
+      gpu: this.gpu || '',
+      detected: this.detected,
+      resolved: this.q,
+      summary: G.describe(this.q, this.three ? px : null, t),
+      fps: Math.round(this.fps || 0),
+      postFailed: !!this.postFailed,
+    };
+  },
+
+  postKeyFor() {
+    const g = this.q;
+    if (!g.post || this.postFailed) return 'none';
+    return [g.ao, g.bloom, g.grade, g.antialias, this.size[0], this.size[1], this.pixelRatio].join('|');
+  },
+
+  buildPost() {
+    const g = this.q;
+    this.composer?.dispose();
+    this.composer = null;
+    if (!g.post || this.postFailed) return;
+    const [w, h] = this.size;
+    const pr = this.pixelRatio;
+    try {
+      const target = new THREE.WebGLRenderTarget(w * pr, h * pr, {
+        type: THREE.HalfFloatType, samples: g.antialias === 'msaa' ? 4 : 0,
+      });
+      const composer = new EffectComposer(this.three, target);
+      composer.setPixelRatio(pr);
+      composer.setSize(w, h);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      if (g.ao !== 'off') {
+        const ao = new GTAOPass(this.scene, this.camera, w * pr, h * pr);
+        ao.output = GTAOPass.OUTPUT.Default;
+        ao.blendIntensity = 0.75;
+        ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
+        ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
+        composer.addPass(ao);
+      }
+      if (g.bloom === 'on') {
+        // High threshold: only the moon, lanterns, fireflies and highlights bloom.
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.45, 0.92));
+      }
+      if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
+      composer.addPass(new OutputPass());
+      if (g.antialias === 'smaa') composer.addPass(new SMAAPass(w * pr, h * pr));
+      if (g.antialias === 'fxaa') {
+        const fxaa = new ShaderPass(FXAAShader);
+        fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+        composer.addPass(fxaa);
+      }
+      this.composer = composer;
+    } catch {
+      // Post-processing is an enhancement: render directly and say so in the panel.
+      this.postFailed = true;
+      this.composer = null;
+      ui.refreshGraphics?.();
+    }
+  },
+
+  // Adaptive resolution: step the render scale down when frames are slow, back up when fast.
+  adapt(dtMs) {
+    const f = this.frameTimes;
+    f.push(dtMs);
+    if (f.length < 90) return;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    this.fps = 1000 / avg;
+    const el = document.getElementById('fps-meter');
+    if (el && !el.hidden) el.textContent = `${Math.round(this.fps)} fps · ${Math.round(this.pixelRatio * 100) / 100}×`;
+    if (!this.q.adaptive) return;
+    if (avg > 26) this.adaptiveScale = Math.max(0.6, this.adaptiveScale - 0.1);
+    else if (avg < 14 && this.adaptiveScale < 1) this.adaptiveScale = Math.min(1, this.adaptiveScale + 0.05);
+  },
+
   frame(dt) {
+    this.adapt(dt * 1000);
+    if (!session.state) {
+      if (this.decor && !this.decor.visible) this.clearBoard();
+      this.titleCamera(dt);
+    }
     this.updateCamera(dt);
     this.updateParticles(dt);
+    this.updateAmbient(dt);
     if (this.marker.visible && !settings.data.reducedMotion) {
       this.marker.material.opacity = 0.7 + 0.25 * Math.sin(performance.now() / 240);
+    }
+    this.applySize(false);
+    const key = this.postKeyFor();
+    if (key !== this.postKey) {
+      this.postKey = key;
+      this.buildPost();
+    }
+    if (this.composer) {
+      try { this.composer.render(dt); return; } catch {
+        this.postFailed = true; this.composer = null; this.postKey = null; ui.refreshGraphics?.();
+      }
     }
     this.three.render(this.scene, this.camera);
   },
@@ -1254,7 +1792,17 @@ const ui = {
       }
     }
     this.current = name;
-    const first = $(`screen-${name}`).querySelector('button:not([disabled]), input, select, [tabindex]');
+    if (name === 'pause') {
+      // Opened from the title menu there is no round: show Settings with Back instead.
+      const menu = !session.state;
+      $('btn-resume').hidden = menu;
+      $('btn-leave').hidden = menu;
+      $('btn-settings-back').hidden = !menu;
+      $('pause-heading').textContent = menu ? tr('settings') : 'Paused';
+      this.refreshGraphics?.();
+    } else if (name !== 'help') this.helpFromSettings = false;
+    const first = [...$(`screen-${name}`).querySelectorAll('button:not([disabled]), input, select, [tabindex]')]
+      .find((el) => !el.closest('[hidden]') && !el.closest('details:not([open]) > :not(summary)'));
     if (first) setTimeout(() => first.focus(), 30);
   },
 
@@ -1609,6 +2157,7 @@ function sessionPause() {
   ui.show('pause');
 }
 function sessionResume() {
+  if (!session.state) { ui.show('title'); return; } // settings opened from the title menu
   if (!session.state || session.state.status !== 'paused') { ui.show('play'); return; }
   session.lastTickAt = performance.now();
   session.command({ t: 'resume' });
@@ -1786,6 +2335,81 @@ function startPending() {
   session.start(cfg, ref);
 }
 
+/* ================================================== graphics panel */
+const tr = translator(navigator.language);
+const gfxUI = {
+  saved() { return settings.data.gfx || {}; },
+  tierLabel(t) { return ['fxaa', 'smaa', 'msaa'].includes(t) ? t.toUpperCase() : tr(t); },
+
+  init() {
+    for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = tr(el.dataset.i18n);
+    if (!render.q) render.setGraphics(this.saved()); // 2-D compat mode still stores choices
+    const host = $('gfx-categories');
+    for (const [cat, tiers] of Object.entries(G.CATEGORIES)) {
+      const row = document.createElement('div');
+      row.className = 'gfx-row';
+      const lab = document.createElement('label');
+      lab.htmlFor = `set-gfx-${cat}`;
+      lab.textContent = tr('cat_' + cat);
+      const sel = document.createElement('select');
+      sel.id = `set-gfx-${cat}`;
+      sel.dataset.gfxCat = cat;
+      for (const v of ['preset', ...tiers]) {
+        const o = document.createElement('option');
+        o.value = v;
+        sel.append(o);
+      }
+      sel.addEventListener('change', () => this.update(G.setOverride(this.saved(), cat, sel.value)));
+      row.append(lab, sel);
+      host.append(row);
+    }
+    $('set-quality').addEventListener('change', (e) => this.update(G.choosePreset(this.saved(), e.target.value)));
+    const rs = $('set-render-scale');
+    rs.addEventListener('input', () => {
+      $('set-render-scale-value').textContent = `${rs.value}%`;
+      this.update({ ...this.saved(), render_scale: Number(rs.value) / 100 });
+    });
+    $('set-gfx-adaptive').addEventListener('change', (e) => this.update({ ...this.saved(), adaptive: e.target.checked }));
+    $('set-gfx-fps').addEventListener('change', (e) => this.update({ ...this.saved(), show_fps: e.target.checked }));
+    ui.refreshGraphics = () => this.refresh();
+    this.refresh();
+  },
+
+  update(next) {
+    settings.data.gfx = next;
+    settings.save();
+    render.setGraphics(next);
+    analytics.push('settings-change', { key: 'graphics' });
+    this.refresh();
+  },
+
+  refresh() {
+    const saved = this.saved();
+    const r = render.q;
+    const q = $('set-quality');
+    for (const o of q.options) o.textContent = o.value === 'auto' ? tr('auto', { tier: tr(render.detected) }) : tr(o.value);
+    q.value = G.PRESETS.includes(saved.preset) ? saved.preset : 'auto';
+    for (const [cat, tiers] of Object.entries(G.CATEGORIES)) {
+      const sel = $(`set-gfx-${cat}`);
+      for (const o of sel.options) {
+        o.textContent = o.value === 'preset'
+          ? tr('fromPreset', { tier: this.tierLabel(G.presetTier(r.preset, cat)) })
+          : this.tierLabel(o.value);
+      }
+      sel.value = tiers.includes(saved[cat]) ? saved[cat] : 'preset';
+    }
+    const pct = Math.round(r.renderScale * 100);
+    $('set-render-scale').value = pct;
+    $('set-render-scale-value').textContent = `${pct}%`;
+    $('set-gfx-adaptive').checked = r.adaptive;
+    $('set-gfx-fps').checked = r.showFps;
+    const alias = { bloom: 'bloomS', reflections: 'reflectionsS' };
+    const info = render.graphicsInfo((k, v, n) => tr(alias[k] || k, { n }));
+    $('gfx-summary').textContent = `${info.gpu || tr('unknownGpu')} · ${info.summary}`;
+    $('gfx-post-note').hidden = !info.postFailed;
+  },
+};
+
 /* ============================================================ wire */
 function wire() {
   $('btn-play').addEventListener('click', () => { audio.ensure(); ui.show('modes'); });
@@ -1805,7 +2429,7 @@ function wire() {
   }
   for (const b of document.querySelectorAll('[data-back]')) {
     b.addEventListener('click', () => {
-      if (ui.current === 'help' && session.state) { ui.show('pause'); return; }
+      if (ui.current === 'help' && (session.state || ui.helpFromSettings)) { ui.show('pause'); return; }
       if (ui.current === 'setup') { ui.show('modes'); return; }
       ui.show('title');
     });
@@ -1814,7 +2438,7 @@ function wire() {
   $('btn-pause').addEventListener('click', sessionPause);
   $('btn-resume').addEventListener('click', sessionResume);
   $('btn-leave').addEventListener('click', sessionLeave);
-  $('btn-help').addEventListener('click', () => ui.show('help'));
+  $('btn-help').addEventListener('click', () => { ui.helpFromSettings = true; ui.show('help'); });
   $('btn-replay-tutorial').addEventListener('click', () => startLesson(C.LESSONS[0]));
   $('btn-hint').addEventListener('click', () => session.command({ t: 'hint' }));
   $('btn-shuffle').addEventListener('click', () => session.command({ t: 'shuffle' }));
@@ -1868,12 +2492,9 @@ function wire() {
   bindCheck('set-left-handed', 'leftHanded', () => document.body.classList.toggle('left-handed', s.leftHanded));
   bindCheck('set-hold-toggle', 'holdToggle');
   bindCheck('set-haptics', 'haptics');
-  $('set-quality').value = s.quality;
-  $('set-quality').addEventListener('change', () => {
-    s.quality = $('set-quality').value;
-    render.applyQuality(s.quality);
-    settings.save();
-  });
+  gfxUI.init();
+  $('btn-settings').addEventListener('click', () => { audio.ensure(); ui.show('pause'); });
+  $('btn-settings-back').addEventListener('click', () => ui.show('title'));
   const themeSel = $('set-theme');
   for (const t of C.THEMES) {
     const o = document.createElement('option');

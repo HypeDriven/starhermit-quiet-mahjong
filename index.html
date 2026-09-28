@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#0d1226">
 <title>Quiet Mahjong</title>
 <link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./js/three.module.min.js", "three/addons/": "./js/addons/" } }</script>
 </head>
 <body data-theme="moonlit-garden">
 
@@ -29,6 +30,7 @@
         <button id="btn-daily" class="ghost">Daily challenge</button>
         <button id="btn-journey" class="ghost">Journey</button>
         <button id="btn-profile" class="ghost">Profile</button>
+        <button id="btn-settings" class="ghost" data-i18n="settings">Settings</button>
       </div>
       <p id="title-status" class="muted"></p>
     </div>
@@ -121,15 +123,26 @@
         <label>Voice cues <input id="set-voice" type="range" min="0" max="100" value="0"></label>
         <label><input id="set-captions" type="checkbox"> Captions for audio cues</label>
       </details>
-      <details class="settings">
-        <summary>Graphics</summary>
-        <label>Quality
-          <select id="set-quality">
+      <details class="settings" id="settings-graphics">
+        <summary data-i18n="graphics">Graphics</summary>
+        <div class="gfx-row"><label for="set-quality" data-i18n="quality">Quality</label>
+          <select id="set-quality" data-gfx="preset">
+            <option value="auto">Auto</option>
             <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
+            <option value="balanced">Balanced</option>
             <option value="high">High</option>
+            <option value="ultra">Ultra</option>
           </select>
-        </label>
+        </div>
+        <div class="gfx-row"><label for="set-render-scale" data-i18n="renderScale">Render scale</label>
+          <span class="gfx-slider"><input id="set-render-scale" data-gfx="render_scale" type="range" min="50" max="200" step="5" value="100">
+          <output id="set-render-scale-value" for="set-render-scale">100%</output></span>
+        </div>
+        <div id="gfx-categories"></div>
+        <label><input id="set-gfx-adaptive" data-gfx="adaptive" type="checkbox" checked> <span data-i18n="adaptive">Adaptive resolution</span></label>
+        <label><input id="set-gfx-fps" data-gfx="show_fps" type="checkbox"> <span data-i18n="showFps">Show frame rate</span></label>
+        <p id="gfx-summary" class="muted gfx-summary" role="status"></p>
+        <p id="gfx-post-note" class="gfx-note" hidden data-i18n="postUnavailable">Post-processing is unavailable on this device; effects are off.</p>
         <label>Theme <select id="set-theme"></select></label>
       </details>
       <details class="settings">
@@ -157,6 +170,7 @@
         <button id="btn-replay-tutorial" class="ghost">Replay tutorial</button>
       </details>
       <button id="btn-leave" class="danger">Leave round</button>
+      <button id="btn-settings-back" class="ghost back" hidden data-i18n="back">Back</button>
     </div>
   </section>
 

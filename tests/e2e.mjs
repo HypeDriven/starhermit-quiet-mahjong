@@ -197,6 +197,65 @@ async function startPractice(page) {
   await page.waitForFunction(() => document.querySelectorAll('#board-mirror button').length > 0);
 }
 
+// ---------- graphics settings (title → Settings → Graphics) ----------
+const gfxState = (page) => page.evaluate(() => ({
+  preset: document.body.dataset.gfxPreset,
+  bloom: document.body.dataset.gfxBloom,
+  shadows: document.body.dataset.gfxShadows,
+  quality: document.getElementById('set-quality').value,
+  bloomSel: document.getElementById('set-gfx-bloom').value,
+  summary: document.getElementById('gfx-summary').textContent,
+}));
+
+async function openGraphics(page) {
+  await page.click('#btn-settings');
+  await page.waitForFunction(() => !document.getElementById('screen-pause').hidden);
+  if (!(await page.isVisible('#btn-settings-back'))) throw new Error('settings opened from title should offer Back');
+  if (await page.isVisible('#btn-leave')) throw new Error('Leave round must be hidden outside a round');
+  if (!(await page.evaluate(() => document.getElementById('settings-graphics').open))) {
+    await page.click('#settings-graphics > summary');
+  }
+  await page.waitForSelector('#set-quality', { state: 'visible' });
+}
+
+async function graphicsFlow(page, name) {
+  await openGraphics(page);
+  const auto = await gfxState(page);
+  if (auto.quality !== 'auto') throw new Error(`default quality should be auto, got ${auto.quality}`);
+  await page.selectOption('#set-quality', 'low');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'low');
+  await page.selectOption('#set-quality', 'high');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'high' && document.body.dataset.gfxShadows === 'medium');
+  await page.selectOption('#set-gfx-bloom', 'off');
+  await page.waitForFunction(() => document.body.dataset.gfxBloom === 'off');
+  let st = await gfxState(page);
+  if (!/2048² shadows/.test(st.summary) || /bloom/.test(st.summary)) throw new Error(`summary not updated: "${st.summary}"`);
+  await page.waitForTimeout(600); // render a few High frames
+  await page.screenshot({ path: SHOT('graphics', name) });
+  ok(`${name}: Graphics panel — Low → High, bloom override applied ("${st.summary}")`);
+
+  // Survives reload.
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForFunction(() => document.getElementById('loading').hidden, null, { timeout: 15000 });
+  st = await gfxState(page);
+  if (st.preset !== 'high' || st.bloom !== 'off' || st.quality !== 'high' || st.bloomSel !== 'off') {
+    throw new Error(`graphics settings not persisted: ${JSON.stringify(st)}`);
+  }
+  ok(`${name}: graphics settings persist across reload`);
+
+  // Choosing a preset clears overrides; Ultra renders cleanly; back to Auto.
+  await openGraphics(page);
+  await page.selectOption('#set-quality', 'ultra');
+  await page.waitForFunction(() => document.body.dataset.gfxPreset === 'ultra' && document.body.dataset.gfxBloom === 'on');
+  if ((await gfxState(page)).bloomSel !== 'preset') throw new Error('preset change did not clear the bloom override');
+  await page.waitForTimeout(600);
+  await page.selectOption('#set-quality', 'auto');
+  await page.waitForFunction((p) => document.body.dataset.gfxPreset === p, auto.preset);
+  await page.click('#btn-settings-back');
+  await page.waitForFunction(() => !document.getElementById('screen-title').hidden);
+  ok(`${name}: Ultra clears overrides, Auto restores "${auto.preset}", Back returns to title`);
+}
+
 // ---------- one full pass ----------
 async function runPass(browser, name, ctxOpts, { full }) {
   const errors = [];
@@ -204,7 +263,7 @@ async function runPass(browser, name, ctxOpts, { full }) {
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() !== 'error' || browserNoise.test(m.text())) return;
+    if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
     if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
@@ -222,6 +281,8 @@ async function runPass(browser, name, ctxOpts, { full }) {
     await page.waitForSelector('#stage canvas', { state: 'attached', timeout: 10000 });
     await page.screenshot({ path: SHOT('title', name) });
     ok(`${name}: title screen visible (3D canvas attached)`);
+
+    await graphicsFlow(page, name);
 
     // Practice (Medium) with undo/hints/shuffle allowed
     await startPractice(page);

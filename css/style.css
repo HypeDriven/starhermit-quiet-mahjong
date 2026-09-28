@@ -195,6 +195,21 @@ body.left-handed #hud-actions { flex-direction: row-reverse; }
 .settings summary { cursor: pointer; min-height: 32px; }
 .settings label { display: block; margin: 8px 0; }
 .settings input[type="range"] { width: 100%; }
+.settings select { font: inherit; color: var(--text); background: #141c33; border: 1px solid var(--panel-border); border-radius: 8px; padding: 6px 8px; min-height: 40px; max-width: 100%; }
+.gfx-row { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; margin: 8px 0; }
+.settings .gfx-row label { margin: 0; flex: 1 1 9em; }
+.gfx-row select { flex: 0 1 15em; min-width: 0; }
+.gfx-slider { display: flex; align-items: center; gap: 8px; flex: 1 1 12em; min-width: 0; }
+.settings .gfx-slider input[type="range"] { flex: 1; min-width: 0; width: auto; }
+.gfx-slider output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gfx-summary { font-size: 0.85rem; overflow-wrap: anywhere; }
+.gfx-note { font-size: 0.85rem; color: var(--focus); }
+#fps-meter {
+  position: fixed; left: calc(8px + var(--safe-left)); bottom: calc(8px + var(--safe-bottom)); z-index: 30;
+  pointer-events: none; font: 12px/1.2 ui-monospace, monospace; color: var(--muted);
+  background: rgba(8,10,24,0.6); padding: 3px 6px; border-radius: 4px;
+}
+#fps-meter[hidden] { display: none; }
 kbd { background: #22304f; border-radius: 4px; padding: 1px 6px; font-size: 0.85em; }
 
 /* ---------------------------------------------------------- results */
@@ -237,8 +252,9 @@ kbd { background: #22304f; border-radius: 4px; padding: 1px 6px; font-size: 0.85
 
 /* Portrait mobile: bottom thumb-zone tray. */
 @media (max-width: 700px) and (orientation: portrait) {
+  #fps-meter { bottom: calc(76px + var(--safe-bottom)); }
   #hud-top { gap: 8px; }
-  #hud-actions .action { flex: 1; }
+  #hud-actions .action { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
   .panel h1 { font-size: 1.8rem; }
 }
 
