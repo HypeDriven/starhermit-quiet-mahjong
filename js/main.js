@@ -22,6 +22,7 @@ import * as G from './gfx.js';
 import { translator } from './gfx-i18n.js';
 import * as R from './rules.js';
 import * as C from './content.js';
+import { platform, keyLabel } from './platform.js';
 
 /* ================================================== small utilities */
 const $ = (id) => document.getElementById(id);
@@ -57,11 +58,6 @@ const DEFAULT_SETTINGS = {
   highContrast: false, largeText: false, leftHanded: false,
   holdToggle: true, haptics: true, palette: 'standard',
   tutorialDone: false,
-  keys: {
-    up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight',
-    confirm: 'Enter', cancel: 'Escape', pause: 'Escape',
-    hint: 'h', undo: 'u', shuffle: 's', camera: 'c',
-  },
   gamepad: { confirm: 0, cancel: 1, shuffle: 2, hint: 3, pause: 9, undo: 8 },
 };
 const settings = {
@@ -69,12 +65,14 @@ const settings = {
   load() {
     try {
       const raw = JSON.parse(localStorage.getItem('qm:settings:v1') || '{}');
-      this.data = { ...DEFAULT_SETTINGS, ...raw, keys: { ...DEFAULT_SETTINGS.keys, ...(raw.keys || {}) } };
+      delete raw.keys; // legacy key map; bindings now come from the controls API
+      this.data = { ...DEFAULT_SETTINGS, ...raw };
     } catch { this.data = { ...DEFAULT_SETTINGS }; }
   },
   save() {
     try { localStorage.setItem('qm:settings:v1', JSON.stringify(this.data)); } catch { /* ok */ }
     platform.scheduleCloud();
+    platform.mirrorSettings();
   },
 };
 
@@ -102,378 +100,6 @@ const progress = {
       localStorage.setItem('qm:progress:v1', JSON.stringify(doc));
     } catch { /* ok */ }
     platform.scheduleCloud();
-  },
-};
-
-/* --------------------------------------- stored zip (cloud saves) */
-// Minimal ZIP writer/reader (stored entries only, no compression) used to
-// wrap the cloud-save document for /api/v1/me/cloud-saves/{slug}.
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(bytes) {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-function zipStore(name, dataBytes) {
-  const enc = new TextEncoder();
-  const nameB = enc.encode(name);
-  const crc = crc32(dataBytes);
-  const out = [];
-  const u16 = (v) => out.push(v & 0xff, (v >> 8) & 0xff);
-  const u32 = (v) => out.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  u32(0x04034b50); u16(20); u16(0); u16(0); u16(0); u16(0);
-  u32(crc); u32(dataBytes.length); u32(dataBytes.length);
-  u16(nameB.length); u16(0);
-  const head = new Uint8Array(out);
-  const cd = [];
-  const c16 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff);
-  const c32 = (v) => cd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  c32(0x02014b50); c16(20); c16(20); c16(0); c16(0); c16(0); c16(0);
-  c32(crc); c32(dataBytes.length); c32(dataBytes.length);
-  c16(nameB.length); c16(0); c16(0); c16(0); c16(0); c32(0); c32(0); // attrs + local-header offset
-  const cdHead = new Uint8Array(cd);
-  const cdOff = head.length + nameB.length + dataBytes.length;
-  const parts = [head, nameB, dataBytes, cdHead, nameB];
-  const eocd = [];
-  const e32 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff);
-  const e16 = (v) => eocd.push(v & 0xff, (v >> 8) & 0xff);
-  e32(0x06054b50); e16(0); e16(0); e16(1); e16(1);
-  e32(cdHead.length + nameB.length); e32(cdOff); e16(0);
-  parts.push(new Uint8Array(eocd));
-  const total = parts.reduce((n, p) => n + p.length, 0);
-  const buf = new Uint8Array(total);
-  let o = 0;
-  for (const p of parts) { buf.set(p, o); o += p.length; }
-  return buf;
-}
-function unzipFirstEntry(zipBytes) {
-  // Stored single-entry reader: scan local headers for compression 0.
-  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
-  let off = 0;
-  while (off + 30 <= zipBytes.length && dv.getUint32(off, true) === 0x04034b50) {
-    const method = dv.getUint16(off + 8, true);
-    const size = dv.getUint32(off + 18, true);
-    const nameLen = dv.getUint16(off + 26, true);
-    const extraLen = dv.getUint16(off + 28, true);
-    const dataOff = off + 30 + nameLen + extraLen;
-    if (method !== 0) throw new Error('unsupported zip entry');
-    return zipBytes.slice(dataOff, dataOff + size);
-  }
-  throw new Error('bad zip');
-}
-function bytesToBase64(bytes) {
-  let s = '';
-  for (let i = 0; i < bytes.length; i += 0x8000)
-    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-function base64ToBytes(b64) {
-  const s = atob(b64);
-  const b = new Uint8Array(s.length);
-  for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
-  return b;
-}
-
-/* ======================================================== platform */
-/** Token-aware REST adapter. The launch token arrives in the URL fragment
- * (#game_token=<jwt>), is read once, stripped via history.replaceState and
- * never persisted. Hosted mode — active iff a token was read — talks to the
- * real StarHermit same-origin /api with Bearer auth: account profile
- * nickname, one zip-wrapped cloud-save slot, read-only leaderboards and a
- * 45-minute launch-token refresh. Without a token the game's own server.js
- * is used when reachable (local dev); everything else degrades to fully
- * local offline play. Query-param tokens are a local-dev fallback only. */
-function decodeJwtClaims(token) {
-  const parts = String(token).split('.');
-  if (parts.length < 2) return {};
-  try {
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4)));
-    return claims && typeof claims === 'object' ? claims : {};
-  } catch { return {}; }
-}
-
-const platform = {
-  online: false, // a backend answered (platform when hosted, else own server.js)
-  hosted: false, // true iff a launch token was read
-  token: null,   // current launch token (memory only)
-  userId: null,  // JWT sub
-  gameKey: null, // JWT game_scope (cloud-save slot and games lookups)
-  timeOffset: 0,
-  cloudState: 'offline', // synced | saving | offline | error
-  _profiles: new Map(),  // userId -> display name (nicknames only)
-  _cloudTimer: null,
-
-  async init() {
-    let token = null;
-    const frag = location.hash.match(/(?:^|[#&])game_token=([^&]+)/);
-    if (frag) {
-      token = decodeURIComponent(frag[1]);
-      history.replaceState(null, '', location.pathname + location.search);
-    }
-    if (!token) { // query fallback: local dev only
-      const url = new URL(location.href);
-      token = url.searchParams.get('token') || url.searchParams.get('launch_token') || url.searchParams.get('launch');
-      if (token) {
-        for (const k of ['token', 'launch_token', 'launch']) url.searchParams.delete(k);
-        history.replaceState(null, '', url.pathname + url.search);
-      }
-    }
-    if (token) {
-      this.token = token;
-      this.hosted = true;
-      this.online = true;
-      const claims = decodeJwtClaims(token);
-      this.userId = claims.sub || null;
-      this.gameKey = claims.game_scope || location.hostname.split('.')[0] || null;
-      this._scheduleRefresh();
-      addEventListener('pagehide', () => this.flushCloud());
-      document.addEventListener('visibilitychange', () => { if (document.hidden) this.flushCloud(); });
-      await this.profileFor(this.userId).catch(() => {}); // display name before first paint
-      this.cloudState = 'saving';
-      await this.loadCloud(); // remote wins conflicts; upload only when remote is empty
-      return;
-    }
-    try {
-      const t0 = Date.now();
-      const res = await fetch('/api/v1/time', { signal: AbortSignal.timeout(2500) });
-      if (!res.ok) throw new Error('http');
-      const body = await res.json();
-      const t1 = Date.now();
-      if (typeof body.epochMs !== 'number') throw new Error('invalid time response');
-      this.timeOffset = body.epochMs - Math.round((t0 + t1) / 2); // round-trip adjusted
-      this.online = true;
-    } catch {
-      this.online = false;
-    }
-  },
-  now() { return Date.now() + this.timeOffset; },
-  utcToday() { return new Date(this.now()).toISOString().slice(0, 10); },
-  headers(json = true) {
-    const h = {};
-    if (json) h['Content-Type'] = 'application/json';
-    if (this.token) h.Authorization = `Bearer ${this.token}`;
-    return h;
-  },
-  async api(path, opts = {}) {
-    const res = await fetch(path, { ...opts, headers: this.headers(), signal: AbortSignal.timeout(5000) });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const err = new Error(body.error || `http-${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return body;
-  },
-
-  /* ---- identity: nickname from the account profile (never /api/v1/me,
-     never usernames; "Player " + id8 fallback per the platform contract). */
-  async profileFor(userId) {
-    if (!userId) return 'Player ????????';
-    if (this._profiles.has(userId)) return this._profiles.get(userId);
-    let name = `Player ${String(userId).slice(0, 8)}`;
-    if (this.hosted) {
-      try {
-        const p = await this.api(`/api/v1/users/${encodeURIComponent(userId)}/profile`);
-        if (p && typeof p.nickname === 'string' && p.nickname.trim()) name = p.nickname.trim();
-      } catch { /* keep the fallback */ }
-    }
-    this._profiles.set(userId, name);
-    return name;
-  },
-  displayName() {
-    if (this.hosted) return this._profiles.get(this.userId) || `Player ${String(this.userId || '').slice(0, 8)}`;
-    return progress.data.name || 'Guest';
-  },
-
-  /* ---- launch-token refresh: scoped tokens may re-mint; swap in the new
-     token. Failures retry after ~60 s. */
-  _scheduleRefresh(delay = 45 * 60000) {
-    setTimeout(async () => {
-      let again = 45 * 60000;
-      try {
-        const res = await this.api(`/api/v1/games/${encodeURIComponent(this.gameKey)}/launch-token`, { method: 'POST' });
-        if (res && typeof res.token === 'string' && res.token) this.token = res.token;
-        if (this.cloudState === 'error') this.pushCloud(); // new token may fix the 401
-      } catch { again = 60000; }
-      if (this.hosted) this._scheduleRefresh(again);
-    }, delay);
-  },
-
-  /* ---- cloud save: one slot, zip+base64. localStorage remains the offline
-     cache; the cloud doc mirrors progress + settings, loaded remote-first. */
-  cloudDocBytes() {
-    const doc = { version: 1, progress: progress.data, settings: settings.data };
-    return zipStore('save.json', new TextEncoder().encode(JSON.stringify(doc)));
-  },
-  async loadCloud() {
-    if (!this.hosted || !this.gameKey) return;
-    try {
-      const res = await fetch(`/api/v1/me/cloud-saves/${encodeURIComponent(this.gameKey)}`, {
-        headers: this.headers(false), signal: AbortSignal.timeout(5000) });
-      if (res.status === 404) { // no remote save yet: seed it from the local copy
-        if (localStorage.getItem('qm:progress:v1')) await this.pushCloud();
-        else this.cloudState = 'synced';
-        ui.syncStatus();
-        return;
-      }
-      if (!res.ok) throw new Error(`http-${res.status}`);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const doc = JSON.parse(new TextDecoder().decode(unzipFirstEntry(bytes)));
-      this._applyCloudDoc(doc); // conflict: remote wins
-      this.cloudState = 'synced';
-    } catch {
-      this.cloudState = 'error'; // play from the local copy; retry on next save
-    }
-    ui.syncStatus();
-  },
-  _applyCloudDoc(doc) {
-    if (!doc || typeof doc !== 'object') return;
-    this._applyingCloud = true;
-    try {
-      if (doc.progress && typeof doc.progress === 'object') {
-        progress.data = { ...progress.data, ...doc.progress };
-        progress.save();
-      }
-      if (doc.settings && typeof doc.settings === 'object') {
-        settings.data = { ...settings.data, ...doc.settings, keys: { ...settings.data.keys, ...(doc.settings.keys || {}) } };
-        settings.save();
-        document.body.classList.toggle('high-contrast', settings.data.highContrast);
-        document.body.classList.toggle('large-text', settings.data.largeText);
-        document.body.classList.toggle('left-handed', settings.data.leftHanded);
-      }
-    } finally {
-      this._applyingCloud = false;
-    }
-  },
-  scheduleCloud() {
-    if (!this.hosted || this._applyingCloud) return;
-    this.cloudState = 'saving';
-    ui.syncStatus();
-    clearTimeout(this._cloudTimer);
-    this._cloudTimer = setTimeout(() => this.pushCloud(), 2000); // debounced
-  },
-  flushCloud() {
-    if (!this.hosted || !this._cloudTimer) return;
-    clearTimeout(this._cloudTimer);
-    this._cloudTimer = null;
-    this.pushCloud(); // best effort; the page may be going away
-  },
-  async pushCloud() {
-    if (!this.hosted || !this.gameKey) return;
-    this._cloudTimer = null;
-    try {
-      await this.api(`/api/v1/me/cloud-saves/${encodeURIComponent(this.gameKey)}`, {
-        method: 'PUT',
-        body: JSON.stringify({ dataBase64: bytesToBase64(this.cloudDocBytes()) }),
-      });
-      this.cloudState = 'synced';
-    } catch {
-      this.cloudState = 'error';
-    }
-    ui.syncStatus();
-  },
-
-  /* ---- daily: the platform has no per-game daily route. Hosted mode uses
-     the same deterministic local seed (identical for everyone); the dev
-     server can pin or exclude days locally. */
-  async getDaily() {
-    const date = this.utcToday();
-    if (this.online && !this.hosted) {
-      try {
-        const d = await this.api('/api/v1/daily');
-        return { date: d.date, seed: d.seed, excluded: !!d.excluded, config: C.dailyConfig(d.date, d.seed) };
-      } catch (e) {
-        if (e.status === 429) ui.toast('Server is busy; using local daily board.');
-      }
-    }
-    return { date, seed: R.dailySeed(date), excluded: false, config: C.dailyConfig(date, R.dailySeed(date)) };
-  },
-
-  /* ---- leaderboards: platform boards are read-only; the game's validated
-     routes are local-dev only. Local personal records always remain. */
-  async gameInfo() {
-    if (this._gameInfo !== undefined) return this._gameInfo;
-    try {
-      this._gameInfo = await this.api(`/api/v1/games/${encodeURIComponent(this.gameKey)}`);
-    } catch {
-      this._gameInfo = null;
-    }
-    return this._gameInfo;
-  },
-  async leaderboard(board, date) {
-    if (this.hosted) {
-      const info = await this.gameInfo();
-      const lbId = info && info.leaderboardId;
-      if (lbId && board !== 'daily') {
-        try {
-          const q = new URLSearchParams({ page: 1, pageSize: 20 });
-          if (board === 'friends') q.set('friendsOnly', 'true');
-          const data = await this.api(`/api/v1/leaderboards/${encodeURIComponent(lbId)}/entries?${q}`);
-          const items = Array.isArray(data.items) ? data.items : (Array.isArray(data.entries) ? data.entries : []);
-          const entries = await Promise.all(items.slice(0, 20).map(async (e) => {
-            const uid = e.userId ?? e.user_id ?? null;
-            return {
-              name: await this.profileFor(uid),
-              score: e.score ?? 0,
-              durationMs: e.elapsedMs ?? e.elapsed_ms ?? e.durationMs ?? 0,
-              mine: uid != null && uid === this.userId,
-            };
-          }));
-          return { entries, note: board === 'friends'
-            ? 'Platform friends board — read-only.'
-            : 'Platform board — read-only. Personal bests are kept in your profile.' };
-        } catch { /* fall through to local records */ }
-      }
-      return {
-        entries: localBoard.all(board),
-        note: lbId
-          ? 'Daily records are kept on this device; global and friends boards are platform-wide.'
-          : 'No platform board for this game yet — showing local records.',
-      };
-    }
-    if (this.online) {
-      try {
-        const res = await this.api(`/api/v1/leaderboard?board=${board}${date ? `&date=${date}` : ''}`);
-        return { entries: res.entries || [], note: 'Validated board — scores verified by replay on the server.' };
-      } catch { /* fall through to local */ }
-    }
-    return { entries: localBoard.all(board), note: 'Casual board — scores are recorded locally.' };
-  },
-
-  /* ---- scores: clients can never submit to a platform leaderboard. Hosted
-     wins stay local personal records; the dev server validates replays. */
-  async submitScore(entry) {
-    if (!this.online || this.hosted) return { ok: false, local: true };
-    try {
-      return await this.api('/api/v1/scores', { method: 'POST', body: JSON.stringify(entry) });
-    } catch {
-      return { ok: false, local: true };
-    }
-  },
-
-  /* ---- achievements stay local on-platform (part of the cloud-saved
-     progress doc); the durable route is local-dev only. */
-  reportAchievement(key) {
-    if (this.online && !this.hosted) {
-      this.api('/api/v1/achievements', { method: 'POST', body: JSON.stringify({ key }) }).catch(() => {});
-    }
-  },
-
-  /* ---- activity/presence: no platform route is reachable with launch
-     tokens; the local-dev server pairs start/end for its own telemetry. */
-  activity(kind) {
-    if (this.online && !this.hosted) {
-      this.api('/api/v1/activity', { method: 'POST', body: JSON.stringify({ kind }) }).catch(() => {});
-    }
   },
 };
 
@@ -1590,7 +1216,6 @@ const session = {
     this.syncAll();
     ui.announce(`${config.mode} round started. ${this.state.tiles.length} tiles.`);
     analytics.push('start', { mode: config.mode, tier: config.tier });
-    platform.activity('start');
     saveSnapshot();
   },
 
@@ -1668,7 +1293,6 @@ const session = {
     this.finished = true;
     const s = this.state;
     analytics.push('round-end', { mode: s.config.mode, won: s.status === 'won', score: R.totalScore(s) });
-    platform.activity('end');
     clearSnapshot();
     if (s.status === 'won') {
       progress.data.stats.wins++;
@@ -1704,9 +1328,8 @@ const session = {
       config: s.config,
       commands: this.commands,
     };
-    const res = await platform.submitScore(entry);
-    if (!res.ok || res.local) localBoard.add(entry);
-    else if (res.label === 'casual') ui.toast('Score recorded on the casual board.');
+    // Clients never submit to a platform board: scores stay local records.
+    localBoard.add(entry);
   },
 };
 
@@ -1760,7 +1383,6 @@ function unlock(key) {
   const def = C.ACHIEVEMENTS.find(a => a.key === key);
   ui.toast(`Achievement unlocked: ${def ? def.name : key}`);
   ui.announce(`Achievement unlocked: ${def ? def.name : key}`);
-  platform.reportAchievement(key);
   return true;
 }
 function checkAchievements(s) {
@@ -1804,6 +1426,53 @@ const ui = {
     const first = [...$(`screen-${name}`).querySelectorAll('button:not([disabled]), input, select, [tabindex]')]
       .find((el) => !el.closest('[hidden]') && !el.closest('details:not([open]) > :not(summary)'));
     if (first) setTimeout(() => first.focus(), 30);
+  },
+
+  /** Toast that is visible on every screen (menus included). */
+  appToast(msg, ms = 3200) {
+    const el = $('app-toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(this._appToastT);
+    this._appToastT = setTimeout(() => el.classList.remove('show'), ms);
+  },
+  /** StarHermit sign-in state: sign-in button when possible, invite when signed in. */
+  authChanged(hosted, initial = false) {
+    $('btn-signin').hidden = hosted || !platform.canSignIn();
+    $('btn-invite').hidden = !hosted;
+    if (!initial && !hosted) this.appToast(tr('signedOut'));
+    this.titleStatus?.();
+    this.syncStatus();
+  },
+  /** Show the effective keyboard bindings in settings and help. */
+  bindingsChanged(b) {
+    const order = ['up', 'down', 'left', 'right', 'select', 'pause', 'hint', 'undo', 'shuffle', 'camera'];
+    for (const id of ['settings-keys', 'help-controls']) {
+      const el = $(id);
+      if (!el) continue;
+      el.textContent = '';
+      if (id === 'settings-keys') el.append(`${tr('keyboard')}: `);
+      order.forEach((a, i) => {
+        if (i) el.append(' · ');
+        el.append(`${tr('act_' + a)} `);
+        (b[a] || []).forEach((c, j) => {
+          if (j) el.append('/');
+          const k = document.createElement('kbd');
+          k.textContent = keyLabel(c);
+          el.append(k);
+        });
+      });
+    }
+  },
+  async copyInvite() {
+    const url = platform.inviteLink();
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.appToast(tr('inviteCopied'));
+    } catch {
+      this.appToast(tr('inviteLink', { url }), 8000);
+    }
   },
 
   announce(msg) { $('live').textContent = msg; },
@@ -1976,7 +1645,7 @@ const ui = {
     const el = $('profile-sync');
     if (!el) return;
     if (!platform.hosted) {
-      el.textContent = platform.online ? '' : 'Progress is stored on this device only.';
+      el.textContent = 'Progress is stored on this device only.';
       return;
     }
     el.textContent = {
@@ -2093,25 +1762,26 @@ const input = {
   },
 
   key(e) {
+    // Routed by KeyboardEvent.code through the player's platform bindings.
+    const action = platform.actionFor(e.code);
     if (ui.current !== 'play') {
-      if (e.key === 'Escape' && (ui.current === 'pause')) sessionResume();
+      if (action === 'pause' && ui.current === 'pause') sessionResume();
       return;
     }
-    const k = settings.data.keys;
+    const tap = () => { if (this.focusId != null) session.command({ t: 'tap', id: this.focusId }); };
     const map = {
-      [k.up]: () => this.moveFocus(0, -1),
-      [k.down]: () => this.moveFocus(0, 1),
-      [k.left]: () => this.moveFocus(-1, 0),
-      [k.right]: () => this.moveFocus(1, 0),
-      [k.confirm]: () => { if (this.focusId != null) session.command({ t: 'tap', id: this.focusId }); },
-      [k.hint]: () => session.command({ t: 'hint' }),
-      [k.undo]: () => session.command({ t: 'undo' }),
-      [k.shuffle]: () => session.command({ t: 'shuffle' }),
-      [k.camera]: () => render.resetCamera(),
+      up: () => this.moveFocus(0, -1),
+      down: () => this.moveFocus(0, 1),
+      left: () => this.moveFocus(-1, 0),
+      right: () => this.moveFocus(1, 0),
+      select: tap,
+      pause: () => sessionPause(),
+      hint: () => session.command({ t: 'hint' }),
+      undo: () => session.command({ t: 'undo' }),
+      shuffle: () => session.command({ t: 'shuffle' }),
+      camera: () => render.resetCamera(),
     };
-    if (e.key === ' ') { e.preventDefault(); if (this.focusId != null) session.command({ t: 'tap', id: this.focusId }); return; }
-    if (e.key === 'Escape') { sessionPause(); return; }
-    const fn = map[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    const fn = action && map[action];
     if (fn) { e.preventDefault(); fn(); }
   },
 
@@ -2184,7 +1854,7 @@ function setupFacts(cfg, extra = []) {
       cfg.allowUndo ? 'undo' : null,
     ].filter(Boolean).join(', ') || 'none'],
     ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge')
-      ? (platform.hosted ? 'read-only board' : 'yes')
+      ? (platform.hosted ? 'read-only board' : 'local records')
       : 'no'],
     ...extra,
   ];
@@ -2280,7 +1950,7 @@ async function setupDaily() {
     ? 'Today\'s board was marked defective and is excluded from ranking. You can still play it.'
     : platform.hosted
       ? 'One shared seed for everyone (UTC day). Scores are kept as local records; global and friends boards are platform-wide and read-only.'
-      : 'One shared seed for everyone, synchronized to platform time. Ranked.';
+      : 'One shared seed for everyone (UTC day). Scores are kept as local records on this device.';
   setupFacts(d.config, [['Seed', String(d.seed)], ['Board', R.LAYOUT_TIERS[d.config.tier].name]]);
   $('setup-options').textContent = '';
   ui.show('setup');
@@ -2416,6 +2086,8 @@ function wire() {
   $('btn-daily').addEventListener('click', () => { audio.ensure(); setupDaily(); });
   $('btn-journey').addEventListener('click', () => { audio.ensure(); setupJourney(); });
   $('btn-profile').addEventListener('click', () => ui.showProfile());
+  $('btn-signin').addEventListener('click', () => platform.signIn());
+  $('btn-invite').addEventListener('click', () => ui.copyInvite());
   for (const b of document.querySelectorAll('#screen-modes .card')) {
     b.addEventListener('click', () => {
       const m = b.dataset.mode;
@@ -2537,16 +2209,28 @@ function wire() {
 }
 
 /* =========================================================== boot */
-async function boot() {
-  settings.load();
-  progress.load();
+function applyBodySettings() {
   document.body.classList.toggle('high-contrast', settings.data.highContrast);
   document.body.classList.toggle('large-text', settings.data.largeText);
   document.body.classList.toggle('left-handed', settings.data.leftHanded);
+}
+
+async function boot() {
+  settings.load();
+  progress.load();
+  applyBodySettings();
 
   $('loading-text').textContent = 'Connecting…';
   $('loading-bar').value = 30;
+  platform.bind({
+    progress, settings, ui, localBoard, C, R,
+    defaultSettings: DEFAULT_SETTINGS,
+    hasLocalProgress: () => { try { return !!localStorage.getItem('qm:progress:v1'); } catch { return false; } },
+    applySettings: applyBodySettings,
+  });
   await platform.init();
+  ui.authChanged(platform.hosted, true);
+  ui.bindingsChanged(platform.bindings);
 
   $('loading-text').textContent = 'Building the garden…';
   $('loading-bar').value = 60;
@@ -2576,12 +2260,13 @@ async function boot() {
     b.addEventListener('click', () => { audio.ensure(); resumeSnapshot(); });
     $('btn-play').after(b);
   }
-  $('title-status').textContent = (platform.hosted
-    ? `Signed in as ${platform.displayName()}.`
-    : platform.online
-      ? 'Connected to the local server.'
+  ui.titleStatus = () => {
+    $('title-status').textContent = (platform.hosted
+      ? `Signed in as ${platform.displayName()}.`
       : 'Offline — fully playable, scores kept locally.') +
-    (snap ? ' A round is in progress.' : '');
+      (loadSnapshot() ? ' A round is in progress.' : '');
+  };
+  ui.titleStatus();
 
   ui.show('title');
 

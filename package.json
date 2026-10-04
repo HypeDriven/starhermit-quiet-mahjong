@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/gfx.test.mjs && node tests/rules.test.mjs && node tools/validate-content.mjs",
+    "test": "node --test tests/gfx.test.mjs tests/platform.test.mjs && node tests/rules.test.mjs && node tools/validate-content.mjs",
     "test:e2e": "node tests/e2e.mjs",
     "test:hosted": "node tests/hosted-platform.check.mjs"
   }

@@ -21,13 +21,10 @@
  * and no internal move API is called.
  *
  * Serving: the repo ships `server.js` (the local dev/standalone backend
- * declared by starhermit.txt), but the client is fully playable offline —
- * when `/api/v1/time` is unavailable it sets `hosted=false` and every
- * onboard mode (practice/journey/daily/challenge/learn/results) works
- * locally. Per the sibling conventions (blockstead / balance-spire /
- * picture-logic) this test embeds a minimal node:http static server on an
- * ephemeral port and answers /api/* probes with 200 `{}` so the client
- * degrades to its documented offline path with zero console noise.
+ * declared by starhermit.txt), but without a launch token the client makes
+ * no own-server request at all and every mode works locally. This test
+ * embeds a minimal node:http static server on an ephemeral port and asserts
+ * it never sees an /api or /ws request.
  *
  * Run: npm run test:e2e  (or: node tests/e2e.mjs)
  */
@@ -61,17 +58,13 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const ownServerCalls = [];
 const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p === '/') p = '/index.html';
-    // No StarHermit backend here: answer API probes with empty JSON (200) so
-    // the platform adapter degrades to offline mode without console noise.
-    if (p.startsWith('/api/')) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{}');
-      return;
-    }
+    // Standalone the game must never call its own server.
+    if (/^\/(api|ws)(\/|$)/.test(p)) ownServerCalls.push(p);
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT)) { res.writeHead(403).end('forbidden'); return; }
     const data = await readFile(file);
@@ -265,12 +258,12 @@ async function runPass(browser, name, ctxOpts, { full }) {
   page.on('console', (m) => {
     if (!['error', 'warning'].includes(m.type()) || browserNoise.test(m.text())) return;
     const url = m.location()?.url || '';
-    if (/Failed to load resource/.test(m.text()) && /\/api\/|\/favicon/.test(url)) return;
+    if (/Failed to load resource/.test(m.text()) && /\/favicon/.test(url)) return;
     errors.push(`console: ${m.text()}`);
   });
   page.on('response', (r) => {
     const p = r.url();
-    if (r.status() >= 400 && !/\/api\/|\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
+    if (r.status() >= 400 && !/\/favicon/.test(p)) errors.push(`http ${r.status()}: ${p}`);
   });
 
   try {
@@ -410,6 +403,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  if (ownServerCalls.length) throw new Error('standalone made own-server requests: ' + ownServerCalls.join(', '));
+  console.log('ok - standalone load made zero same-origin /api or /ws requests');
   console.log('\nE2E PASS — quiet-mahjong, desktop + mobile, no page errors');
 } catch (e) {
   failures++;

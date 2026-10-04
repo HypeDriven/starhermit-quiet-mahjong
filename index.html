@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">{ "imports": { "three": "./js/three.module.min.js", "three/addons/": "./js/addons/" } }</script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
 </head>
 <body data-theme="moonlit-garden">
 
@@ -32,7 +33,9 @@
         <button id="btn-journey" class="ghost">Journey</button>
         <button id="btn-profile" class="ghost">Profile</button>
         <button id="btn-settings" class="ghost" data-i18n="settings">Settings</button>
+        <button id="btn-invite" class="ghost" hidden data-i18n="invite">Invite a friend</button>
       </div>
+      <button id="btn-signin" class="ghost signin" hidden data-i18n="signIn">Sign in with StarHermit</button>
       <p id="title-status" class="muted"></p>
     </div>
   </section>
@@ -162,8 +165,7 @@
             <option value="tritanopia">Tritanopia-safe</option>
           </select>
         </label>
-        <label>Keyboard: <kbd>←→↑↓</kbd> move focus, <kbd>Enter</kbd>/<kbd>Space</kbd> select,
-          <kbd>Esc</kbd> pause, <kbd>H</kbd> hint, <kbd>U</kbd> undo, <kbd>S</kbd> shuffle, <kbd>C</kbd> camera reset.</label>
+        <p id="settings-keys" class="keys-line"></p>
       </details>
       <details class="settings">
         <summary>Help</summary>
@@ -248,6 +250,8 @@
       <button id="btn-compat-continue" class="primary">Continue in 2D</button>
     </div>
   </section>
+
+  <p id="app-toast" class="toast app-toast" role="status"></p>
 
   <!-- Loading -->
   <div id="loading" role="status" aria-label="Loading">

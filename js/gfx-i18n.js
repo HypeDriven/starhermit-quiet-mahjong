@@ -92,6 +92,60 @@ const STRINGS = {
     bloomS: 'bagliore', reflectionsS: 'riflessi', noAa: 'nessun antialiasing',
   },
 };
+// StarHermit platform chrome (sign-in, invite link, keyboard bindings).
+const PLATFORM = {
+  en: {
+    signIn: 'Sign in with StarHermit', invite: 'Invite a friend',
+    inviteCopied: 'Invite link copied to the clipboard.', inviteLink: 'Invite link: {url}',
+    signedOut: 'Signed out of StarHermit — progress is kept on this device.',
+    act_up: 'Up', act_down: 'Down', act_left: 'Left', act_right: 'Right', act_select: 'Select',
+    act_pause: 'Pause', act_hint: 'Hint', act_undo: 'Undo', act_shuffle: 'Shuffle', act_camera: 'Reset camera',
+    keyboard: 'Keyboard',
+  },
+  es: {
+    signIn: 'Iniciar sesión con StarHermit', invite: 'Invitar a un amigo',
+    inviteCopied: 'Enlace de invitación copiado al portapapeles.', inviteLink: 'Enlace de invitación: {url}',
+    signedOut: 'Se cerró la sesión de StarHermit; el progreso se guarda en este dispositivo.',
+    act_up: 'Arriba', act_down: 'Abajo', act_left: 'Izquierda', act_right: 'Derecha', act_select: 'Seleccionar',
+    act_pause: 'Pausa', act_hint: 'Pista', act_undo: 'Deshacer', act_shuffle: 'Barajar', act_camera: 'Restablecer cámara',
+    keyboard: 'Teclado',
+  },
+  de: {
+    signIn: 'Mit StarHermit anmelden', invite: 'Freund einladen',
+    inviteCopied: 'Einladungslink in die Zwischenablage kopiert.', inviteLink: 'Einladungslink: {url}',
+    signedOut: 'Von StarHermit abgemeldet – der Fortschritt bleibt auf diesem Gerät.',
+    act_up: 'Hoch', act_down: 'Runter', act_left: 'Links', act_right: 'Rechts', act_select: 'Auswählen',
+    act_pause: 'Pause', act_hint: 'Tipp', act_undo: 'Rückgängig', act_shuffle: 'Mischen', act_camera: 'Kamera zurücksetzen',
+    keyboard: 'Tastatur',
+  },
+  fr: {
+    signIn: 'Se connecter avec StarHermit', invite: 'Inviter un ami',
+    inviteCopied: 'Lien d’invitation copié dans le presse-papiers.', inviteLink: 'Lien d’invitation : {url}',
+    signedOut: 'Déconnecté de StarHermit — la progression reste sur cet appareil.',
+    act_up: 'Haut', act_down: 'Bas', act_left: 'Gauche', act_right: 'Droite', act_select: 'Sélectionner',
+    act_pause: 'Pause', act_hint: 'Indice', act_undo: 'Annuler', act_shuffle: 'Mélanger', act_camera: 'Réinitialiser la caméra',
+    keyboard: 'Clavier',
+  },
+  pt: {
+    signIn: 'Entrar com StarHermit', invite: 'Convidar um amigo',
+    inviteCopied: 'Link de convite copiado para a área de transferência.', inviteLink: 'Link de convite: {url}',
+    signedOut: 'Você saiu do StarHermit — o progresso fica salvo neste dispositivo.',
+    act_up: 'Cima', act_down: 'Baixo', act_left: 'Esquerda', act_right: 'Direita', act_select: 'Selecionar',
+    act_pause: 'Pausar', act_hint: 'Dica', act_undo: 'Desfazer', act_shuffle: 'Embaralhar', act_camera: 'Redefinir câmera',
+    keyboard: 'Teclado',
+  },
+  it: {
+    signIn: 'Accedi con StarHermit', invite: 'Invita un amico',
+    inviteCopied: 'Link di invito copiato negli appunti.', inviteLink: 'Link di invito: {url}',
+    signedOut: 'Disconnesso da StarHermit: i progressi restano su questo dispositivo.',
+    act_up: 'Su', act_down: 'Giù', act_left: 'Sinistra', act_right: 'Destra', act_select: 'Seleziona',
+    act_pause: 'Pausa', act_hint: 'Suggerimento', act_undo: 'Annulla', act_shuffle: 'Mescola', act_camera: 'Ripristina visuale',
+    keyboard: 'Tastiera',
+  },
+};
+for (const [k, v] of Object.entries(PLATFORM)) Object.assign(STRINGS[k], v);
+Object.assign(STRINGS['en-GB'], PLATFORM.en);
+
 // Regional variants that differ only in a few words.
 STRINGS['es-ES'] = { ...STRINGS.es, renderScale: 'Escala de renderizado', cat_antialias: 'Suavizado de bordes', noAa: 'sin suavizado' };
 STRINGS['es-419'] = STRINGS.es;

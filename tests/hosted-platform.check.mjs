@@ -35,7 +35,7 @@ const server = http.createServer(async (req, res) => {
       }
       let m;
       if ((m = p.match(/^\/api\/v1\/me\/cloud-saves\/([^/]+)$/))) {
-        if (decodeURIComponent(m[1]) !== 'quiet-mahjong') return j(404, { error: 'not-found' });
+        if (decodeURIComponent(m[1]) !== 'game:quiet-mahjong') return j(404, { error: 'not-found' });
         if (req.method === 'GET') return cloudSave ? j(200, cloudSave, 'application/zip') : j(404, { error: 'not-found' });
         if (req.method === 'PUT') {
           let body = ''; req.on('data', (c) => body += c);
@@ -95,6 +95,11 @@ try {
   await page.waitForFunction(() => document.getElementById('title-status').textContent.includes('Signed in as'), null, { timeout: 8000 });
   const status = await page.textContent('#title-status');
   ok(/Signed in as Moonlit Ana/.test(status), `title shows nickname ("${status}")`);
+  ok(await page.isVisible('#btn-invite') && !(await page.isVisible('#btn-signin')), 'invite button shown, sign-in hidden when signed in');
+  await page.click('#btn-invite');
+  await page.waitForFunction(() => document.getElementById('app-toast').classList.contains('show'), null, { timeout: 4000 });
+  const inviteToast = await page.textContent('#app-toast');
+  ok(/game-invite\/user-1234567890\/quiet-mahjong|clipboard/i.test(inviteToast), `invite toast ("${inviteToast.slice(0, 60)}")`);
 
   // profile screen: nickname shown, input disabled, sync status present
   await page.click('#btn-profile');
