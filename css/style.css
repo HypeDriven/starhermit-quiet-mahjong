@@ -57,6 +57,8 @@ body.high-contrast {
 .screen[hidden] { display: none; }
 .screen.play { pointer-events: none; align-items: stretch; justify-content: stretch; flex-direction: column; }
 .screen.play > * { pointer-events: auto; }
+/* modal overlays dim the scene so bright tile faces don't ghost through panel text */
+.screen.overlay { background: rgba(6, 9, 22, 0.55); }
 
 .panel {
   background: var(--panel);
@@ -276,11 +278,17 @@ kbd { background: #22304f; border-radius: 4px; padding: 1px 6px; font-size: 0.85
 .title-panel .signin:not([hidden]) { display: block; margin: 12px auto 0; }
 .app-toast {
   position: fixed; z-index: 50; bottom: calc(24px + var(--safe-bottom));
-  left: 50%; transform: translateX(-50%); max-width: min(70ch, calc(100vw - 32px));
+  left: 50%; transform: translateX(-50%); max-width: min(70ch, calc(100vw / var(--ui-scale, 1) - 32px));
   overflow-wrap: anywhere;
 }
 @media (max-height: 480px) and (orientation: landscape) {
-  .app-toast { left: 50%; transform: translateX(-50%); max-width: calc(100vw - 32px); bottom: calc(8px + var(--safe-bottom)); }
+  .app-toast { left: 50%; transform: translateX(-50%); max-width: calc(100vw / var(--ui-scale, 1) - 32px); bottom: calc(8px + var(--safe-bottom)); }
 }
 .keys-line { margin: 6px 0; line-height: 1.6; }
 .keys-line kbd, #help-controls kbd { white-space: nowrap; }
+
+/* ------------------------------------------------ large screens
+   ui-scale.js sets --ui-scale (exactly 1 up to 1600x1000). Every DOM UI layer
+   zooms by it once; the 3D stage and the projected tile mirror stay unzoomed. */
+.screen:not(.play), #hud-top, #hud-actions, .toast, .caption, #fps-meter, #loading,
+body.mirror-visible #board-mirror { zoom: var(--ui-scale, 1); }
