@@ -1308,6 +1308,7 @@ const session = {
     progress.data.stats.rounds++;
     progress.save();
     ui.showResults();
+    this.postToLeaderboard();
   },
 
   async submitScore() {
@@ -1328,8 +1329,24 @@ const session = {
       config: s.config,
       commands: this.commands,
     };
-    // Clients never submit to a platform board: scores stay local records.
     localBoard.add(entry);
+  },
+
+  // Hosted only: Journey, Daily and Challenge rounds (not Learn or Practice,
+  // not a resigned round) post their total to the platform high-score board;
+  // the results screen shows the rank.
+  postToLeaderboard() {
+    const s = this.state;
+    const line = $('results-lb');
+    const seq = this.lbSeq = (this.lbSeq || 0) + 1;
+    line.hidden = true;
+    if (!platform.hosted || ['learn', 'practice'].includes(s.config.mode) || s.reason === 'resigned') return;
+    line.hidden = false;
+    line.textContent = tr('lbPosting');
+    platform.submitScore(R.totalScore(s)).then((r) => {
+      if (seq !== this.lbSeq) return;
+      line.textContent = !r.posted ? tr('lbNotPosted') : r.rank ? tr('lbRank', { rank: r.rank }) : tr('lbPosted');
+    });
   },
 };
 
@@ -1853,8 +1870,8 @@ function setupFacts(cfg, extra = []) {
       cfg.allowShuffle !== false ? 'shuffles' : null,
       cfg.allowUndo ? 'undo' : null,
     ].filter(Boolean).join(', ') || 'none'],
-    ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge')
-      ? (platform.hosted ? 'read-only board' : 'local records')
+    ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge' || cfg.mode === 'journey')
+      ? (platform.hosted ? 'platform board' : 'local records')
       : 'no'],
     ...extra,
   ];
@@ -1949,7 +1966,7 @@ async function setupDaily() {
   $('setup-description').textContent = d.excluded
     ? 'Today\'s board was marked defective and is excluded from ranking. You can still play it.'
     : platform.hosted
-      ? 'One shared seed for everyone (UTC day). Scores are kept as local records; global and friends boards are platform-wide and read-only.'
+      ? 'One shared seed for everyone (UTC day). Scores are kept as local records and also posted to the platform-wide board.'
       : 'One shared seed for everyone (UTC day). Scores are kept as local records on this device.';
   setupFacts(d.config, [['Seed', String(d.seed)], ['Board', R.LAYOUT_TIERS[d.config.tier].name]]);
   $('setup-options').textContent = '';

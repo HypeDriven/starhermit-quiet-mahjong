@@ -210,16 +210,16 @@ No module may mutate rules state except through a validated command. Rendering c
 ### Achievements and leaderboards
 - Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
 - Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores.
-- On the platform, leaderboards are platform-owned and read-only: the game reads the board id from `StarHermit.getGame()` (or the first of `leaderboards()`) and entries via `leaderboardEntries()` (friends tab: `scope=friends`), resolving names through profiles; it never submits scores. Daily and personal-best records stay local (cloud-saved) and are labelled as such.
-- Standalone, scores are local records (casual board); the client never submits scores to any server.
+- On the platform, every finished Journey, Daily or Challenge round (not Learn or Practice, not a resigned round) posts its total through `StarHermit.submitScores` (`platform.submitScore`): a practice session whose platform script `score-script.js` range-checks it and posts it to the `high-score` board (integer, higher is better, 0–1,000,000). The results screen's `#results-lb` line shows "Leaderboard rank: #N" (or posted / not posted), localized in the nine locales with the other platform strings (`js/gfx-i18n.js`). The Scores screen reads the board id from `StarHermit.getGame()` (or the first of `leaderboards()`) and entries via `leaderboardEntries()` (friends tab: `scope=friends`), resolving names through profiles. Daily and personal-best records also stay local (cloud-saved) and are labelled as such.
+- Standalone, scores are local records (casual board); the client submits nothing and shows no leaderboard line.
 
 ### Sessions and transport
-- The initial game is solo. The shipped server.js is a plain Node development backend (not a Jint game script); the client does not call it. On the platform there is no script entitlement: achievements stay local (part of the cloud-saved progress doc) and the game makes no script-owned calls.
+- The initial game is solo. The shipped server.js is a plain Node development backend (not a Jint game script); the client does not call it. The platform script is `score-script.js` (canonical copy in the games repo's `tools/score-script.js`), which only accepts leaderboard results; achievements stay local (part of the cloud-saved progress doc).
 - A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
 - Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
 
 ### Publishing and operations
-- Keep the development/standalone server inside the distribution and declare it with `server=server.js`; it serves static files for local play and tests only — the platform host does not run it as an authoritative script. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
+- Keep the development/standalone server (`server.js`) inside the distribution; it serves static files for local play and tests only. `starhermit.txt` declares `server=score-script.js`, the platform script that posts leaderboard results. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
 - Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
 - Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
 

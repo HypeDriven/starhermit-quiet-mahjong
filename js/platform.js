@@ -6,7 +6,7 @@
  * account profile nickname, renewal (SDK), one cloud-save slot
  * (`game:<slug>`, loaded remote-first, debounced, flushed on pagehide),
  * per-player settings KV, keyboard bindings from the controls API,
- * read-only platform leaderboards and the invite share link.
+ * the platform high-score board (post + read) and the invite share link.
  *
  * Without a token the game is fully local and makes no network request at
  * all (device clock, local boards, achievements and records).
@@ -227,8 +227,22 @@ export const platform = {
     return { date, seed: R.dailySeed(date), excluded: false, config: C.dailyConfig(date, R.dailySeed(date)) };
   },
 
-  /* ---- leaderboards: platform boards are read-only (hosted only). Local
-     personal records always remain. */
+  /* ---- Post a finished round's total to the platform high-score board via
+     the game's score script (score-script.js). Resolves { posted, rank }. */
+  async submitScore(total) {
+    const sh = SH();
+    if (!this.hosted || !sh) return { posted: false, rank: null };
+    const keys = await sh.submitScores({ 'high-score': total });
+    if (!keys.includes('high-score')) return { posted: false, rank: null };
+    try {
+      const r = await sh.leaderboard('high-score', { pageSize: 100 });
+      const me = ((r && r.items) || []).find(i => i.userId === this.userId);
+      return { posted: true, rank: me ? me.rank : null };
+    } catch { return { posted: true, rank: null }; }
+  },
+
+  /* ---- leaderboards: platform boards (hosted only). Local personal
+     records always remain. */
   async gameInfo() {
     const sh = SH();
     if (this._gameInfo !== undefined) return this._gameInfo;
@@ -261,8 +275,8 @@ export const platform = {
             };
           }));
           return { entries, note: board === 'friends'
-            ? 'Platform friends board — read-only.'
-            : 'Platform board — read-only. Personal bests are kept in your profile.' };
+            ? 'Platform friends board.'
+            : 'Platform board. Personal bests are kept in your profile.' };
         }
       }
       return {

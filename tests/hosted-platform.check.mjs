@@ -110,7 +110,7 @@ try {
   const sync = await page.textContent('#profile-sync');
   ok(/synced/i.test(sync), `sync status visible ("${sync}")`);
 
-  // scores: platform read-only board with nicknames, own row marked
+  // scores: platform board with nicknames, own row marked
   await page.evaluate(() => document.querySelector('[data-back]').click());
   await page.click('#btn-play');
   await page.click('#screen-modes [data-mode="scores"]');
@@ -121,7 +121,7 @@ try {
   ok(!rows.some((r) => r.text.includes('garden_grl') || r.text.includes('tile_king')), 'no usernames rendered');
   ok(rows[0].me === true, 'own row highlighted');
   const note = await page.textContent('#scores-note');
-  ok(/read-only/i.test(note), `scores note honest ("${note}")`);
+  ok(/^Platform board/.test(note), `scores note honest ("${note}")`);
 
   // every platform call carried the Bearer token
   const authedCalls = calls.filter((c) => c.auth);
