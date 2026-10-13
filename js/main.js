@@ -158,7 +158,7 @@ const audio = {
         const g = this.ctx.createGain();
         g.connect(master);
         g.gain.value = (settings.data[b] ?? 50) / 100;
-        this.buses[b] = g;
+        this.buses[b] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, b) : g);
       }
       this.startAmbience();
       this.startMusic();
@@ -169,7 +169,7 @@ const audio = {
   tone(bus, freq, dur, { type = 'sine', gain = 0.2, slide = 0, delay = 0 } = {}) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime + delay;
-    const o = this.ctx.createOscillator();
+    const o = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createOscillator(), bus) : this.ctx.createOscillator());
     const g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
@@ -187,7 +187,7 @@ const audio = {
     const d = buf.getChannelData(0);
     const rng = R.makeRng(1234, 'audio-variant'); // seeded variants
     for (let i = 0; i < len; i++) d[i] = (rng() * 2 - 1) * (1 - i / len);
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), bus) : this.ctx.createBufferSource());
     src.buffer = buf;
     const f = this.ctx.createBiquadFilter();
     f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
@@ -218,7 +218,7 @@ const audio = {
   playSample(name) {
     const buf = this.sample(name);
     if (!buf) return false;
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), name) : this.ctx.createBufferSource());
     src.buffer = buf;
     src.connect(this.buses.effects);
     src.start();
@@ -269,7 +269,7 @@ const audio = {
     const rng = R.makeRng(99, 'ambience');
     let last = 0;
     for (let i = 0; i < len; i++) { last = last * 0.98 + (rng() * 2 - 1) * 0.02; d[i] = last * 3; }
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), null) : this.ctx.createBufferSource());
     src.buffer = buf; src.loop = true;
     const f = this.ctx.createBiquadFilter();
     f.type = 'lowpass'; f.frequency.value = 500;
@@ -1171,11 +1171,11 @@ const render = {
       this.buildPost();
     }
     if (this.composer) {
-      try { this.composer.render(dt); return; } catch {
+      try { (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dt)) : this.composer.render(dt)); return; } catch {
         this.postFailed = true; this.composer = null; this.postKey = null; ui.refreshGraphics?.();
       }
     }
-    this.three.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.three, () => this.three.render(this.scene, this.camera)) : this.three.render(this.scene, this.camera));
   },
 };
 
