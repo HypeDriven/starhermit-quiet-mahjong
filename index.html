@@ -12,6 +12,9 @@
 <script src="ui-scale.js"></script>
 <script src="browser-guard.js"></script>
 <script src="starhermit-sdk.js"></script>
+<script src="sh-language.js"></script>
+<script src="js/strings.js"></script>
+<script src="js/i18n.js"></script>
 </head>
 <body data-theme="moonlit-garden">
 
@@ -27,7 +30,7 @@
   <!-- ======================= TITLE ======================= -->
   <section id="screen-title" class="screen" aria-labelledby="title-heading">
     <div class="panel title-panel">
-      <h1 id="title-heading">Quiet Mahjong</h1>
+      <h1 id="title-heading" data-i18n-skip>Quiet Mahjong</h1>
       <p class="tagline">A moonlit garden of ceramic pairs.</p>
       <button id="btn-play" class="primary big">Play</button>
       <div class="title-secondary">
@@ -89,7 +92,7 @@
     <header id="hud-top">
       <div class="hud-block">
         <h2 id="hud-objective">Clear the board</h2>
-        <p id="hud-progress">0 / 0 pairs</p>
+        <p id="hud-progress"></p>
       </div>
       <div class="hud-block">
         <p id="hud-timer" aria-label="Elapsed time">0:00</p>
@@ -121,6 +124,8 @@
     <div class="panel">
       <h2 id="pause-heading">Paused</h2>
       <button id="btn-resume" class="primary">Resume</button>
+      <!-- Settings groups; the shared Sound, Language and Report sections (game-options.js) mount at its end. -->
+      <div class="settings-groups" data-options-graphics>
       <details class="settings" open>
         <summary>Audio</summary>
         <label>Music <input id="set-music" type="range" min="0" max="100" value="60"></label>
@@ -132,7 +137,7 @@
       <details class="settings" id="settings-graphics">
         <summary data-i18n="graphics">Graphics</summary>
         <div class="gfx-row"><label for="set-quality" data-i18n="quality">Quality</label>
-          <select id="set-quality" data-gfx="preset">
+          <select id="set-quality" data-gfx="preset" data-i18n-skip>
             <option value="auto">Auto</option>
             <option value="low">Low</option>
             <option value="balanced">Balanced</option>
@@ -174,6 +179,7 @@
         <button id="btn-help" class="ghost">How to play</button>
         <button id="btn-replay-tutorial" class="ghost">Replay tutorial</button>
       </details>
+      </div>
       <button id="btn-leave" class="danger">Leave round</button>
       <button id="btn-settings-back" class="ghost back" hidden data-i18n="back">Back</button>
     </div>
@@ -209,7 +215,7 @@
         <div class="rule-card"><h3>Free tiles</h3><p>A tile is free when no tile covers it and its left or right side is open. Free tiles glow softly.</p></div>
         <div class="rule-card"><h3>Select</h3><p>Tap or click a free tile, then tap a matching free tile. A second tap on the same tile deselects it.</p></div>
         <div class="rule-card"><h3>Stuck</h3><p>Hint shows a legal pair; Shuffle re-deals the remaining tiles. Both cost score.</p></div>
-        <div class="rule-card"><h3>Controls</h3><p id="help-controls">Arrow keys move focus between free tiles, Enter selects, Esc pauses, H hint, U undo, S shuffle, C resets the camera.</p></div>
+        <div class="rule-card"><h3>Controls</h3><p id="help-controls" data-i18n-skip>Arrow keys move focus between free tiles, Enter selects, Esc pauses, H hint, U undo, S shuffle, C resets the camera.</p></div>
         <div class="rule-card"><h3>Score</h3><p>Pairs and streaks add points; hints, shuffles, undos and invalid taps subtract. Finishing under par adds a time bonus.</p></div>
       </div>
       <button class="ghost back" data-back>Back</button>

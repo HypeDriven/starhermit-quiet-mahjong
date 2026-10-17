@@ -32,7 +32,7 @@ function stubPlatform() {
     if (url === '/api/v1/users/u-1234567890/profile') return json(200, { nickname: 'Moonlit Ana', username: 'ana' });
     if (url === '/api/v1/me/cloud-saves/game%3Aquiet-mahjong') {
       if (method === 'GET') return store.save ? new Response(store.save, { status: 200 }) : json(404, { error: 'not-found' });
-      if (method === 'PUT') { store.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return json(200, { ok: true }); }
+      if (method === 'PUT') { store.save = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return json(200, { etag: `"v${calls.length}"` }); }
     }
     if (url === '/api/v1/games/quiet-mahjong/settings') {
       if (method === 'GET') return json(200, { settings: store.settings });
@@ -116,7 +116,7 @@ test('hosted: token, profile, cloud save, settings KV and bindings', async () =>
 
 test('standalone on the platform host: no network, sign-in offered', async () => {
   const net = stubPlatform();
-  const sh = SDK.create({ window: fakeWindow('', 'quiet-mahjong.starhermit.com'), fetch: net.fetch, ...timers() });
+  const sh = SDK.create({ window: fakeWindow('', '0b9d6f2e-3c4a-4e5b-9a7c-1d2e3f405162.starhermit.com'), fetch: net.fetch, ...timers() });
   const { mod, settings, progress, ui, DEFAULTS } = await load('standalone', sh);
   const localFetch = [];
   mod.platform.bind({ progress, settings, ui, defaultSettings: DEFAULTS });
@@ -151,4 +151,61 @@ test('standalone locally: no network request at all', async () => {
   assert.equal(d.date, new Date().toISOString().slice(0, 10), 'device-clock UTC day');
   assert.deepEqual((await mod.platform.leaderboard('global')).entries, ['x'], 'local board');
   assert.deepEqual(localFetch, [], 'still no request after daily/board reads');
+});
+
+test('hosted: a save conflict reloads the cloud copy, merges progress and saves again', async () => {
+  // ETag-versioned slot: writes after a load are conditional (If-Match / If-None-Match).
+  let slot = null, version = 0;
+  const puts = [];
+  const fetch = async (url, init = {}) => {
+    const method = init.method || 'GET';
+    const h = init.headers || {};
+    const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { 'Content-Type': 'application/json' } });
+    if (url.endsWith('/profile')) return json(200, { nickname: 'Moonlit Ana' });
+    if (url === '/api/v1/me/cloud-saves/game%3Aquiet-mahjong/info') return json(200, slot ? { exists: true, etag: `"v${version}"` } : { exists: false });
+    if (url === '/api/v1/me/cloud-saves/game%3Aquiet-mahjong') {
+      if (method === 'GET') return slot ? new Response(slot, { status: 200 }) : json(404, {});
+      const cur = slot ? `"v${version}"` : null;
+      puts.push(h['If-Match'] || h['If-None-Match'] || null);
+      if ((h['If-Match'] && h['If-Match'] !== cur) || (h['If-None-Match'] === '*' && slot)) return json(412, { error: 'precondition failed', etag: cur });
+      slot = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+      version++;
+      return json(200, { etag: `"v${version}"` });
+    }
+    if (url.endsWith('/settings')) return json(200, { settings: {} });
+    if (url.endsWith('/controls')) return json(200, { actions: [] });
+    return json(404, {});
+  };
+  const sh = SDK.create({ window: fakeWindow(`#game_token=${JWT}`), fetch, ...timers() });
+  const { mod, settings, progress, ui, DEFAULTS } = await load('conflict', sh);
+  progress.data = { version: 1, journey: { j01: { score: 900, ms: 60000 } }, dailies: {}, achievements: { 'first-clear': 50 },
+    stats: { rounds: 3, wins: 1, bestScore: 900, pairsTotal: 6 }, friends: [], name: '' };
+  mod.platform.bind({ progress, settings, ui, defaultSettings: DEFAULTS, hasLocalProgress: () => true });
+  await mod.platform.init();
+  await sleep(20); // empty slot seeded from local progress (If-None-Match: *)
+  assert.equal(puts[0], '*');
+
+  // Another device saves different progress.
+  const other = { version: 1, progress: { version: 1, journey: { j01: { score: 700, ms: 50000 }, j02: { score: 1200, ms: 70000 } },
+    dailies: { '2026-10-16': { score: 2000 } }, achievements: { 'first-clear': 10, 'streak-8': 20 },
+    stats: { rounds: 9, wins: 4, bestScore: 2000, pairsTotal: 40 }, friends: [], name: '' }, settings: {} };
+  slot = Buffer.from(sh._zip('save.json', new TextEncoder().encode(JSON.stringify(other))));
+  version++;
+
+  progress.data.stats.rounds = 4;
+  progress.save();
+  await mod.platform.flushCloud(); // refused (412) → saveconflict → reload + merge + save
+  await sleep(50);
+  await sh.flushSave();
+  await sleep(20);
+  const p = progress.data;
+  assert.deepEqual(p.journey, { j01: { score: 900, ms: 60000 }, j02: { score: 1200, ms: 70000 } });
+  assert.deepEqual(p.dailies, { '2026-10-16': { score: 2000 } });
+  assert.deepEqual(p.achievements, { 'first-clear': 10, 'streak-8': 20 });
+  assert.deepEqual(p.stats, { rounds: 9, wins: 4, bestScore: 2000, pairsTotal: 40 });
+  assert.equal(sh.saveConflicted(), false);
+  assert.equal(puts.at(-1), `"v${version - 1}"`, 'merged doc written on top of the other device\'s version');
+  const saved = JSON.parse(new TextDecoder().decode(await sh._unzip(new Uint8Array(slot))));
+  assert.deepEqual(saved.progress.journey.j02, { score: 1200, ms: 70000 });
+  assert.equal(saved.progress.journey.j01.score, 900);
 });

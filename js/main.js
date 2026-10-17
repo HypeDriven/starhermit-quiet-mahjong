@@ -20,6 +20,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as G from './gfx.js';
 import { translator } from './gfx-i18n.js';
+import { T, N, lang, onLanguage } from './lang.js';
 import * as R from './rules.js';
 import * as C from './content.js';
 import { platform, keyLabel } from './platform.js';
@@ -33,6 +34,17 @@ const fmtTime = (ms) => {
 };
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
   'xxxxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)) + Date.now().toString(16));
+
+/* ===================================================== localization */
+// Display names for modes, face families and audio captions (English keys,
+// translated through js/lang.js at render time).
+const MODE_NAMES = { learn: N('Learn'), journey: N('Journey'), daily: N('Daily'), practice: N('Practice'), challenge: N('Challenge') };
+const FAMILY_NAMES = { moon: N('moon'), petal: N('petal'), wave: N('wave'), stone: N('stone'), wind: N('wind'), star: N('star'), lantern: N('lantern') };
+const faceLabel = (face) => { const [fam, r] = String(face).split('-'); return FAMILY_NAMES[fam] ? `${T(FAMILY_NAMES[fam])} ${r}` : R.faceName(face); };
+const CAPTIONS = {
+  select: N('select'), deselect: N('deselect'), remove: N('remove'), invalid: N('invalid'), hint: N('hint'),
+  undo: N('undo'), shuffle: N('shuffle'), won: N('won'), lost: N('lost'), pause: N('pause'),
+};
 
 /* ======================================================= analytics */
 /** Anonymous aggregate funnel events only: start, tutorial step, round
@@ -1214,7 +1226,7 @@ const session = {
     $('btn-resume-round')?.remove();
     ui.show('play');
     this.syncAll();
-    ui.announce(`${config.mode} round started. ${this.state.tiles.length} tiles.`);
+    ui.announce(T('{mode} round started. {n} tiles.', { mode: T(MODE_NAMES[config.mode] || config.mode), n: this.state.tiles.length }));
     analytics.push('start', { mode: config.mode, tier: config.tier });
     saveSnapshot();
   },
@@ -1248,7 +1260,7 @@ const session = {
               if (t && render.ok) { const p = render.worldPos(t); render.burst(p.x, p.y + 0.3, p.z); }
             }
           }
-          ui.announce(`Removed pair ${R.faceName(e.face)}. ${this.state.pairsRemoved} pairs gone, streak ${e.streak}.`);
+          ui.announce(T('Removed pair {face}. {n} pairs gone, streak {streak}.', { face: faceLabel(e.face), n: this.state.pairsRemoved, streak: e.streak }));
           break;
         }
         case 'invalid': audio.event('invalid'); input.haptic([30, 30, 30]); break;
@@ -1263,16 +1275,16 @@ const session = {
 
   explainError(err) {
     const msg = {
-      [R.ERR.NOT_FREE]: 'That tile is covered or blocked on both sides.',
-      [R.ERR.MISMATCH]: 'Those faces do not match.',
-      [R.ERR.NOT_FOUND]: 'That tile is already gone.',
-      [R.ERR.NO_UNDO]: 'Undo is not available here.',
-      [R.ERR.NO_SHUFFLE]: 'Shuffle is not available here.',
-      [R.ERR.NO_HINT]: 'No hint available.',
-      [R.ERR.MOVE_LIMIT]: 'Move limit reached.',
-      [R.ERR.TIME_LIMIT]: 'Time is up.',
+      [R.ERR.NOT_FREE]: N('That tile is covered or blocked on both sides.'),
+      [R.ERR.MISMATCH]: N('Those faces do not match.'),
+      [R.ERR.NOT_FOUND]: N('That tile is already gone.'),
+      [R.ERR.NO_UNDO]: N('Undo is not available here.'),
+      [R.ERR.NO_SHUFFLE]: N('Shuffle is not available here.'),
+      [R.ERR.NO_HINT]: N('No hint available.'),
+      [R.ERR.MOVE_LIMIT]: N('Move limit reached.'),
+      [R.ERR.TIME_LIMIT]: N('Time is up.'),
     }[err];
-    if (msg) { ui.toast(msg); ui.alert(msg); }
+    if (msg) { ui.toast(T(msg)); ui.alert(T(msg)); }
   },
 
   /** Advance authoritative elapsed time in quantized units. */
@@ -1342,11 +1354,19 @@ const session = {
     line.hidden = true;
     if (!platform.hosted || ['learn', 'practice'].includes(s.config.mode) || s.reason === 'resigned') return;
     line.hidden = false;
-    line.textContent = tr('lbPosting');
+    this.lbResult = { pending: true };
+    this.renderLeaderboardLine();
     platform.submitScore(R.totalScore(s)).then((r) => {
       if (seq !== this.lbSeq) return;
-      line.textContent = !r.posted ? tr('lbNotPosted') : r.rank ? tr('lbRank', { rank: r.rank }) : tr('lbPosted');
+      this.lbResult = r;
+      this.renderLeaderboardLine();
     });
+  },
+  renderLeaderboardLine() {
+    const line = $('results-lb');
+    const r = this.lbResult;
+    if (!r || line.hidden) return;
+    line.textContent = r.pending ? tr('lbPosting') : !r.posted ? tr('lbNotPosted') : r.rank ? tr('lbRank', { rank: r.rank }) : tr('lbPosted');
   },
 };
 
@@ -1383,7 +1403,7 @@ function resumeSnapshot() {
   $('btn-resume-round')?.remove();
   ui.show('play');
   session.syncAll();
-  ui.toast('Round restored from your last safe snapshot.');
+  ui.toast(T('Round restored from your last safe snapshot.'));
   return true;
 }
 session.syncAll = function () {
@@ -1398,8 +1418,9 @@ function unlock(key) {
   if (progress.data.achievements[key]) return false; // idempotent
   progress.data.achievements[key] = Date.now();
   const def = C.ACHIEVEMENTS.find(a => a.key === key);
-  ui.toast(`Achievement unlocked: ${def ? def.name : key}`);
-  ui.announce(`Achievement unlocked: ${def ? def.name : key}`);
+  const msg = T('Achievement unlocked: {name}', { name: def ? T(def.name) : key });
+  ui.toast(msg);
+  ui.announce(msg);
   return true;
 }
 function checkAchievements(s) {
@@ -1437,7 +1458,7 @@ const ui = {
       $('btn-resume').hidden = menu;
       $('btn-leave').hidden = menu;
       $('btn-settings-back').hidden = !menu;
-      $('pause-heading').textContent = menu ? tr('settings') : 'Paused';
+      $('pause-heading').textContent = menu ? tr('settings') : T('Paused');
       this.refreshGraphics?.();
     } else if (name !== 'help') this.helpFromSettings = false;
     const first = [...$(`screen-${name}`).querySelectorAll('button:not([disabled]), input, select, [tabindex]')]
@@ -1503,7 +1524,7 @@ const ui = {
   },
   caption(text) {
     const el = $('caption');
-    el.textContent = `♪ ${text}`;
+    el.textContent = `♪ ${T(CAPTIONS[text] || text)}`;
     clearTimeout(this._capT);
     this._capT = setTimeout(() => { el.textContent = ''; }, 1400);
   },
@@ -1512,18 +1533,18 @@ const ui = {
     const s = session.state;
     if (!s) return;
     const total = s.tiles.length / 2;
-    $('hud-progress').textContent = `${s.pairsRemoved} / ${total} pairs · streak ${s.streak}`;
+    $('hud-progress').textContent = T('{n} / {total} pairs · streak {streak}', { n: s.pairsRemoved, total, streak: s.streak });
     $('hud-timer').textContent = fmtTime(s.elapsedMs);
     $('hud-score').textContent = String(R.totalScore(s));
     let limit = '';
-    if (s.config.moveLimit != null) limit = `${Math.max(0, s.config.moveLimit - s.taps)} taps left`;
-    if (s.config.timeLimitMs != null) limit = `${fmtTime(Math.max(0, s.config.timeLimitMs - s.elapsedMs))} left`;
+    if (s.config.moveLimit != null) limit = T('{n} taps left', { n: Math.max(0, s.config.moveLimit - s.taps) });
+    if (s.config.timeLimitMs != null) limit = T('{time} left', { time: fmtTime(Math.max(0, s.config.timeLimitMs - s.elapsedMs)) });
     $('hud-limit').textContent = limit;
     $('hud-objective').textContent =
-      s.status === 'won' ? 'Board clear!' :
-      s.status === 'lost' ? 'Round over' :
-      s.config.mode === 'learn' ? (session.contentRef?.text || 'Follow the lesson') :
-      'Clear the board';
+      s.status === 'won' ? T('Board clear!') :
+      s.status === 'lost' ? T('Round over') :
+      s.config.mode === 'learn' ? (session.contentRef?.text ? T(session.contentRef.text) : T('Follow the lesson')) :
+      T('Clear the board');
   },
 
   updateActions() {
@@ -1555,13 +1576,15 @@ const ui = {
     for (const t of s.tiles) {
       if (t.removed) continue;
       const b = document.createElement('button');
-      b.textContent = `${R.faceName(t.face)}${free.has(t.id) ? '' : ' (blocked)'}`;
+      b.textContent = free.has(t.id) ? faceLabel(t.face) : T('{face} (blocked)', { face: faceLabel(t.face) });
       b.dataset.tileId = t.id;
       b.dataset.free = String(free.has(t.id));
       b.setAttribute('role', 'gridcell');
       b.setAttribute('aria-pressed', String(s.selected === t.id));
-      b.setAttribute('aria-label',
-        `${R.faceName(t.face)}, layer ${t.z + 1}${free.has(t.id) ? ', free' : ', blocked'}${s.selected === t.id ? ', selected' : ''}`);
+      const ariaKey = free.has(t.id)
+        ? (s.selected === t.id ? N('{face}, layer {z}, free, selected') : N('{face}, layer {z}, free'))
+        : (s.selected === t.id ? N('{face}, layer {z}, blocked, selected') : N('{face}, layer {z}, blocked'));
+      b.setAttribute('aria-label', T(ariaKey, { face: faceLabel(t.face), z: t.z + 1 }));
       b.tabIndex = free.has(t.id) ? 0 : -1;
       b.addEventListener('click', () => session.command({ t: 'tap', id: t.id }));
       host.appendChild(b);
@@ -1583,36 +1606,38 @@ const ui = {
 
   showResults() {
     const s = session.state;
-    $('results-heading').textContent = s.status === 'won' ? 'Board clear' : 'Round over';
-    $('results-sub').textContent = {
-      cleared: 'Every pair found. The garden is quiet again.',
-      'move-limit': 'The move limit was reached.',
-      'time-limit': 'Time ran out.',
-      'no-moves': 'No legal pairs remained.',
-      resigned: 'You left the table early.',
-    }[s.reason] || '';
+    $('results-heading').textContent = s.status === 'won' ? T('Board clear') : T('Round over');
+    const sub = {
+      cleared: N('Every pair found. The garden is quiet again.'),
+      'move-limit': N('The move limit was reached.'),
+      'time-limit': N('Time ran out.'),
+      'no-moves': N('No legal pairs remained.'),
+      resigned: N('You left the table early.'),
+    }[s.reason];
+    $('results-sub').textContent = sub ? T(sub) : '';
     const tbody = $('results-table').querySelector('tbody');
     tbody.textContent = '';
     for (const c of R.scoreBreakdown(s)) {
       const tr = document.createElement('tr');
       tr.innerHTML = `<th scope="row"></th><td></td>`;
-      tr.querySelector('th').textContent = c.label;
+      tr.querySelector('th').textContent = T(c.label);
       tr.querySelector('td').textContent = String(c.value);
       tbody.appendChild(tr);
     }
     $('results-total').textContent = String(R.totalScore(s));
-    const statBits = [`Time ${fmtTime(s.elapsedMs)}`, `${s.hints} hints`, `${s.shuffles} shuffles`, `${s.invalid} invalid taps`, `best streak ${s.bestStreak}`];
-    $('results-progress').textContent = statBits.join(' · ');
+    $('results-progress').textContent = T('Time {time} · {hints} hints · {shuffles} shuffles · {invalid} invalid taps · best streak {streak}',
+      { time: fmtTime(s.elapsedMs), hints: s.hints, shuffles: s.shuffles, invalid: s.invalid, streak: s.bestStreak });
     $('results-achievements').textContent = (session.newUnlocks || []).length
-      ? 'Achievements: ' + session.newUnlocks
-          .map(k => (C.ACHIEVEMENTS.find(a => a.key === k) || { name: k }).name).join(' · ')
+      ? T('Achievements: {list}', { list: session.newUnlocks
+          .map(k => { const a = C.ACHIEVEMENTS.find(x => x.key === k); return a ? T(a.name) : k; }).join(' · ') })
       : '';
     const next = this.nextRecommendation();
     $('btn-next').hidden = !next;
     if (next) $('btn-next').textContent = next.label;
     this._next = next;
-    this.announce($('results-heading').textContent + '. ' + $('results-sub').textContent +
-      ` Total score ${R.totalScore(s)}.`);
+    this.announce($('results-heading').textContent + '. ' + $('results-sub').textContent + ' ' +
+      T('Total score {n}.', { n: R.totalScore(s) }));
+    if (!$('screen-results').hidden) return; // language re-render: stay put
     this.show('results');
   },
 
@@ -1622,20 +1647,21 @@ const ui = {
       const idx = C.JOURNEY_STAGES.findIndex(st => st.id === ref.stageId);
       if (idx >= 0 && idx + 1 < C.JOURNEY_STAGES.length) {
         const st = C.JOURNEY_STAGES[idx + 1];
-        return { label: `Next: ${st.name}`, run: () => setupJourneyStage(st) };
+        return { label: T('Next: {name}', { name: T(st.name) }), run: () => setupJourneyStage(st) };
       }
     }
     if (ref?.lessonId) {
       const idx = C.LESSONS.findIndex(l => l.id === ref.lessonId);
       if (idx >= 0 && idx + 1 < C.LESSONS.length) {
         const l = C.LESSONS[idx + 1];
-        return { label: `Next lesson: ${l.title}`, run: () => startLesson(l) };
+        return { label: T('Next lesson: {name}', { name: T(l.title) }), run: () => startLesson(l) };
       }
     }
     return null;
   },
 
   async showScores(board = 'global') {
+    this.scoresBoard = board;
     for (const tab of document.querySelectorAll('#screen-scores .tab')) {
       tab.setAttribute('aria-selected', String(tab.dataset.board === board));
     }
@@ -1651,7 +1677,7 @@ const ui = {
     }
     if (!ol.children.length) {
       const li = document.createElement('li');
-      li.textContent = 'No scores yet. Finish a board to post one.';
+      li.textContent = T('No scores yet. Finish a board to post one.');
       ol.appendChild(li);
     }
     this.show('scores');
@@ -1662,15 +1688,15 @@ const ui = {
     const el = $('profile-sync');
     if (!el) return;
     if (!platform.hosted) {
-      el.textContent = 'Progress is stored on this device only.';
+      el.textContent = T('Progress is stored on this device only.');
       return;
     }
-    el.textContent = {
-      synced: 'Cloud save synced to your account.',
-      saving: 'Syncing progress to your account…',
-      offline: '',
-      error: 'Cloud sync failed — progress is safe locally and will retry on the next change.',
-    }[platform.cloudState] || '';
+    const msg = {
+      synced: N('Cloud save synced to your account.'),
+      saving: N('Syncing progress to your account…'),
+      error: N('Cloud sync failed — progress is safe locally and will retry on the next change.'),
+    }[platform.cloudState];
+    el.textContent = msg ? T(msg) : '';
   },
 
   showProfile() {
@@ -1678,21 +1704,22 @@ const ui = {
     nameEl.value = platform.hosted ? platform.displayName() : (progress.data.name || '');
     nameEl.disabled = platform.hosted; // hosted identity comes from the account
     $('profile-name-note').textContent = platform.hosted
-      ? 'Signed in with your StarHermit account; the name comes from your account profile.'
+      ? T('Signed in with your StarHermit account; the name comes from your account profile.')
       : '';
     this.syncStatus();
     const st = progress.data.stats;
-    $('profile-stats').textContent =
-      `${st.rounds} rounds · ${st.wins} clears · best score ${st.bestScore} · ${st.pairsTotal} pairs total`;
+    $('profile-stats').textContent = T('{rounds} rounds · {wins} clears · best score {best} · {pairs} pairs total',
+      { rounds: st.rounds, wins: st.wins, best: st.bestScore, pairs: st.pairsTotal });
     const ul = $('profile-achievements');
     ul.textContent = '';
     for (const a of C.ACHIEVEMENTS) {
       const li = document.createElement('li');
       const got = !!progress.data.achievements[a.key];
       li.className = got ? '' : 'locked';
-      li.textContent = `${got ? '◆' : '◇'} ${a.name} — ${a.description}`;
+      li.textContent = `${got ? '◆' : '◇'} ${T(a.name)} — ${T(a.description)}`;
       ul.appendChild(li);
     }
+    if (!$('screen-profile').hidden) return; // language re-render: stay put
     this.show('profile');
   },
 };
@@ -1862,18 +1889,18 @@ function sessionLeave() {
 /* ===================================================== mode setup */
 function setupFacts(cfg, extra = []) {
   const facts = [
-    ['Rules', 'Remove matching pairs of free tiles'],
-    ['Duration', `about ${Math.round(cfg.parMs / 60000)} min (par)`],
-    ['Players', '1'],
-    ['Assists', [
-      cfg.allowHints !== false ? 'hints' : null,
-      cfg.allowShuffle !== false ? 'shuffles' : null,
-      cfg.allowUndo ? 'undo' : null,
-    ].filter(Boolean).join(', ') || 'none'],
-    ['Ranked', (cfg.mode === 'daily' || cfg.mode === 'challenge' || cfg.mode === 'journey')
-      ? (platform.hosted ? 'platform board' : 'local records')
-      : 'no'],
-    ...extra,
+    [T('Rules'), T('Remove matching pairs of free tiles')],
+    [T('Duration'), T('about {n} min (par)', { n: Math.round(cfg.parMs / 60000) })],
+    [T('Players'), '1'],
+    [T('Assists'), [
+      cfg.allowHints !== false ? T('hints') : null,
+      cfg.allowShuffle !== false ? T('shuffles') : null,
+      cfg.allowUndo ? T('undo') : null,
+    ].filter(Boolean).join(', ') || T('none')],
+    [T('Ranked'), (cfg.mode === 'daily' || cfg.mode === 'challenge' || cfg.mode === 'journey')
+      ? (platform.hosted ? T('platform board') : T('local records'))
+      : T('no')],
+    ...extra.map(([k, v]) => [T(k), v]),
   ];
   const dl = $('setup-facts');
   dl.textContent = '';
@@ -1884,18 +1911,18 @@ function setupFacts(cfg, extra = []) {
   }
 }
 
-function setupPractice() {
-  ui.pendingSetup = { kind: 'practice', tier: 'medium' };
-  $('setup-heading').textContent = 'Practice';
-  $('setup-description').textContent = 'Relaxed play. Undo is allowed, restarts are free, and results never affect ratings.';
+function setupPractice(prevTier) {
+  ui.pendingSetup = { kind: 'practice', tier: prevTier || 'medium' };
+  $('setup-heading').textContent = T('Practice');
+  $('setup-description').textContent = T('Relaxed play. Undo is allowed, restarts are free, and results never affect ratings.');
   setupFacts({ mode: 'practice', parMs: 8 * 60000, allowHints: true, allowShuffle: true, allowUndo: true });
   const host = $('setup-options');
   host.textContent = '';
   for (const tier of Object.keys(R.LAYOUT_TIERS)) {
     const b = document.createElement('button');
     b.className = 'card';
-    b.innerHTML = `<strong>${R.LAYOUT_TIERS[tier].name}</strong><span>${R.LAYOUT_TIERS[tier].pairs} pairs</span>`;
-    b.setAttribute('aria-pressed', String(tier === 'medium'));
+    b.innerHTML = `<strong>${T(R.LAYOUT_TIERS[tier].name)}</strong><span>${T('{n} pairs', { n: R.LAYOUT_TIERS[tier].pairs })}</span>`;
+    b.setAttribute('aria-pressed', String(tier === (prevTier || 'medium')));
     b.addEventListener('click', () => {
       ui.pendingSetup.tier = tier;
       for (const o of host.children) o.setAttribute('aria-pressed', 'false');
@@ -1908,8 +1935,8 @@ function setupPractice() {
 
 function setupJourney() {
   ui.pendingSetup = { kind: 'journey' };
-  $('setup-heading').textContent = 'Journey';
-  $('setup-description').textContent = 'Forty authored stages. A new idea appears alone, combines with a known one, then a mastery stage tests both.';
+  $('setup-heading').textContent = T('Journey');
+  $('setup-description').textContent = T('Forty authored stages. A new idea appears alone, combines with a known one, then a mastery stage tests both.');
   const host = $('setup-options');
   host.textContent = '';
   const done = progress.data.journey;
@@ -1918,57 +1945,59 @@ function setupJourney() {
     const b = document.createElement('button');
     b.className = 'card';
     const cleared = !!done[st.id];
-    b.innerHTML = `<strong>${st.index}. ${st.name}${st.mastery ? ' ◆' : ''}</strong><span>${cleared ? `cleared · ${done[st.id].score}` : R.LAYOUT_TIERS[st.config.tier].name}</span>`;
+    b.innerHTML = `<strong>${st.index}. ${T(st.name)}${st.mastery ? ' ◆' : ''}</strong><span>${cleared ? T('cleared · {score}', { score: done[st.id].score }) : T(R.LAYOUT_TIERS[st.config.tier].name)}</span>`;
     b.addEventListener('click', () => setupJourneyStage(st));
     if (st.index === (nextIdx < 0 ? 40 : nextIdx + 1)) b.classList.add('primary');
     host.appendChild(b);
   }
-  setupFacts(C.JOURNEY_STAGES[0].config, [['Stages', `${Object.keys(done).length} / 40 cleared`]]);
+  setupFacts(C.JOURNEY_STAGES[0].config, [[N('Stages'), T('{n} / 40 cleared', { n: Object.keys(done).length })]]);
   ui.show('setup');
 }
 
 function setupJourneyStage(st) {
   ui.pendingSetup = { kind: 'journey-stage', stage: st };
-  $('setup-heading').textContent = `${st.index}. ${st.name}`;
-  $('setup-description').textContent = st.mastery ? 'Mastery stage — no hints, tighter par.' : 'Journey stage.';
-  setupFacts(st.config, [['Theme', C.themeById(st.theme).name]]);
+  $('setup-heading').textContent = `${st.index}. ${T(st.name)}`;
+  $('setup-description').textContent = st.mastery ? T('Mastery stage — no hints, tighter par.') : T('Journey stage.');
+  setupFacts(st.config, [[N('Theme'), T(C.themeById(st.theme).name)]]);
   $('setup-options').textContent = '';
   ui.show('setup');
 }
 
 function setupChallenge() {
   ui.pendingSetup = { kind: 'challenge' };
-  $('setup-heading').textContent = 'Challenge';
-  $('setup-description').textContent = 'Constrained goals: move limits, speed targets, restricted tools.';
+  $('setup-heading').textContent = T('Challenge');
+  $('setup-description').textContent = T('Constrained goals: move limits, speed targets, restricted tools.');
   const host = $('setup-options');
   host.textContent = '';
   for (const ch of C.CHALLENGES) {
     const b = document.createElement('button');
     b.className = 'card';
-    b.innerHTML = `<strong>${ch.name}</strong><span>${ch.description}</span>`;
-    b.addEventListener('click', () => {
-      ui.pendingSetup = { kind: 'challenge-one', challenge: ch };
-      $('setup-heading').textContent = ch.name;
-      $('setup-description').textContent = ch.description;
-      setupFacts(ch.config, [['Theme', C.themeById(ch.theme).name]]);
-      host.textContent = '';
-    });
+    b.innerHTML = `<strong>${T(ch.name)}</strong><span>${T(ch.description)}</span>`;
+    b.addEventListener('click', () => setupChallengeOne(ch));
     host.appendChild(b);
   }
   setupFacts(C.CHALLENGES[0].config);
   ui.show('setup');
 }
 
-async function setupDaily() {
-  const d = await platform.getDaily();
+function setupChallengeOne(ch) {
+  ui.pendingSetup = { kind: 'challenge-one', challenge: ch };
+  $('setup-heading').textContent = T(ch.name);
+  $('setup-description').textContent = T(ch.description);
+  setupFacts(ch.config, [[N('Theme'), T(C.themeById(ch.theme).name)]]);
+  $('setup-options').textContent = '';
+}
+
+async function setupDaily(known) {
+  const d = known || await platform.getDaily();
   ui.pendingSetup = { kind: 'daily', daily: d };
-  $('setup-heading').textContent = `Daily — ${d.date}`;
+  $('setup-heading').textContent = T('Daily — {date}', { date: d.date });
   $('setup-description').textContent = d.excluded
-    ? 'Today\'s board was marked defective and is excluded from ranking. You can still play it.'
+    ? T('Today\'s board was marked defective and is excluded from ranking. You can still play it.')
     : platform.hosted
-      ? 'One shared seed for everyone (UTC day). Scores are kept as local records and also posted to the platform-wide board.'
-      : 'One shared seed for everyone (UTC day). Scores are kept as local records on this device.';
-  setupFacts(d.config, [['Seed', String(d.seed)], ['Board', R.LAYOUT_TIERS[d.config.tier].name]]);
+      ? T('One shared seed for everyone (UTC day). Scores are kept as local records and also posted to the platform-wide board.')
+      : T('One shared seed for everyone (UTC day). Scores are kept as local records on this device.');
+  setupFacts(d.config, [[N('Seed'), String(d.seed)], [N('Board'), T(R.LAYOUT_TIERS[d.config.tier].name)]]);
   $('setup-options').textContent = '';
   ui.show('setup');
 }
@@ -1981,7 +2010,7 @@ function startLesson(lesson) {
   };
   render.setTheme(C.themeById(settings.data.theme));
   session.start(cfg, { lessonId: lesson.id, text: lesson.text, mastery: false });
-  ui.toast(lesson.text, 6000);
+  ui.toast(T(lesson.text), 6000);
   analytics.push('tutorial-step', { lesson: lesson.id });
 }
 
@@ -2023,7 +2052,8 @@ function startPending() {
 }
 
 /* ================================================== graphics panel */
-const tr = translator(navigator.language);
+// Graphics/account strings (js/gfx-i18n.js) in the current game language.
+const tr = (key, vars) => translator(lang())(key, vars);
 const gfxUI = {
   saved() { return settings.data.gfx || {}; },
   tierLabel(t) { return ['fxaa', 'smaa', 'msaa'].includes(t) ? t.toUpperCase() : tr(t); },
@@ -2187,7 +2217,7 @@ function wire() {
   const themeSel = $('set-theme');
   for (const t of C.THEMES) {
     const o = document.createElement('option');
-    o.value = t.id; o.textContent = t.name;
+    o.value = t.id; o.textContent = T(t.name);
     themeSel.appendChild(o);
   }
   themeSel.value = s.theme;
@@ -2216,7 +2246,7 @@ function wire() {
       const away = performance.now() - session.lastTickAt;
       if (session.state.config.mode === 'daily' && away > 2000) {
         session.command({ t: 'tick', ms: Math.floor(away) });
-        ui.toast(`While you were away: ${fmtTime(away)} elapsed on the daily clock.`);
+        ui.toast(T('While you were away: {time} elapsed on the daily clock.', { time: fmtTime(away) }));
       }
       session.lastTickAt = performance.now();
     }
@@ -2224,6 +2254,46 @@ function wire() {
   addEventListener('orientationchange', () => setTimeout(() => { render.resize(); ui.positionMirror(); }, 120));
   addEventListener('resize', () => ui.positionMirror());
 }
+
+/* ================================================= live language */
+// Settings → Language (or the account preference arriving): js/i18n.js has
+// re-applied the static markup; re-render everything written from code in
+// place, without touching the round in progress.
+function relabelStatic() {
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = tr(el.dataset.i18n);
+  for (const sel of document.querySelectorAll('#gfx-categories select')) {
+    const lab = document.querySelector(`label[for="${sel.id}"]`);
+    if (lab) lab.textContent = tr('cat_' + sel.dataset.gfxCat);
+  }
+  const themeSel = $('set-theme');
+  for (const o of themeSel.options) o.textContent = T(C.themeById(o.value).name);
+}
+onLanguage(() => {
+  relabelStatic();
+  ui.refreshGraphics?.();
+  ui.bindingsChanged(platform.bindings);
+  ui.titleStatus?.();
+  ui.syncStatus();
+  const resumeRound = $('btn-resume-round');
+  if (resumeRound) resumeRound.textContent = T('Resume round');
+  if (ui.current === 'pause') $('pause-heading').textContent = session.state ? T('Paused') : tr('settings');
+  const p = ui.pendingSetup;
+  if (p && ui.current === 'setup') {
+    if (p.kind === 'practice') setupPractice(p.tier);
+    else if (p.kind === 'journey') setupJourney();
+    else if (p.kind === 'journey-stage') setupJourneyStage(p.stage);
+    else if (p.kind === 'challenge') setupChallenge();
+    else if (p.kind === 'challenge-one') setupChallengeOne(p.challenge);
+    else if (p.kind === 'daily') setupDaily(p.daily);
+  }
+  if (session.state) {
+    ui._mirrorSig = null;
+    session.syncAll();
+    if (!$('screen-results').hidden) { ui.showResults(); session.renderLeaderboardLine(); }
+  }
+  if (ui.current === 'profile') ui.showProfile();
+  if (ui.current === 'scores') ui.showScores(ui.scoresBoard);
+});
 
 /* =========================================================== boot */
 function applyBodySettings() {
@@ -2237,7 +2307,7 @@ async function boot() {
   progress.load();
   applyBodySettings();
 
-  $('loading-text').textContent = 'Connecting…';
+  $('loading-text').textContent = T('Connecting…');
   $('loading-bar').value = 30;
   platform.bind({
     progress, settings, ui, localBoard, C, R,
@@ -2249,7 +2319,7 @@ async function boot() {
   ui.authChanged(platform.hosted, true);
   ui.bindingsChanged(platform.bindings);
 
-  $('loading-text').textContent = 'Building the garden…';
+  $('loading-text').textContent = T('Building the garden…');
   $('loading-bar').value = 60;
   const hasGL = render.init();
   if (!hasGL) {
@@ -2269,19 +2339,19 @@ async function boot() {
 
   const snap = loadSnapshot();
   if (snap) {
-    $('title-status').textContent = 'A round is in progress.';
+    $('title-status').textContent = T('A round is in progress.');
     const b = document.createElement('button');
     b.id = 'btn-resume-round';
     b.className = 'primary';
-    b.textContent = 'Resume round';
+    b.textContent = T('Resume round');
     b.addEventListener('click', () => { audio.ensure(); resumeSnapshot(); });
     $('btn-play').after(b);
   }
   ui.titleStatus = () => {
     $('title-status').textContent = (platform.hosted
-      ? `Signed in as ${platform.displayName()}.`
-      : 'Offline — fully playable, scores kept locally.') +
-      (loadSnapshot() ? ' A round is in progress.' : '');
+      ? T('Signed in as {name}.', { name: platform.displayName() })
+      : T('Offline — fully playable, scores kept locally.')) +
+      (loadSnapshot() ? ' ' + T('A round is in progress.') : '');
   };
   ui.titleStatus();
 
@@ -2306,6 +2376,6 @@ async function boot() {
 
 boot().catch((e) => {
   analytics.push('error', { category: 'boot' });
-  $('loading-text').textContent = 'Something went wrong while loading. Reload to try again.';
+  $('loading-text').textContent = T('Something went wrong while loading. Reload to try again.');
   console.error(e);
 });

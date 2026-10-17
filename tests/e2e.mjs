@@ -33,9 +33,11 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT = (stage, vp) => `/tmp/quiet-mahjong-e2e-${stage}-${vp}.png`;
+// Screenshots go to $E2E_SHOT_DIR (default /tmp).
+const SHOT = (stage, vp) => path.join(process.env.E2E_SHOT_DIR || '/tmp', `quiet-mahjong-e2e-${stage}-${vp}.png`);
 
 // benign GPU/swiftshader noise (mirrors tools/production_game_audit.mjs)
 const browserNoise = /GL Driver Message|GPU stall due to ReadPixels|Automatic fallback to software WebGL|EnableWebGLDeveloperExtensions/i;
@@ -392,6 +394,96 @@ async function runPass(browser, name, ctxOpts, { full }) {
   console.log(`ok - ${name}: no page errors`);
 }
 
+// ---------- language pass (desktop + mobile, signed in via a stubbed API) ----------
+// Automatic follows the StarHermit preferred language (fr-CA); switching to
+// Italian mid-round in the pause sheet re-renders it, the HUD and the tile
+// mirror without ending the round and saves ui.language; Report a problem
+// posts a bug report.
+async function runLanguage(browser, name, ctxOpts) {
+  const errors = [];
+  const context = await browser.newContext(ctxOpts);
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if ((m.type() !== 'error' && m.type() !== 'warning') || browserNoise.test(m.text())) return;
+    if (/Failed to load resource/.test(m.text()) && /\/favicon|\/sfx\//.test(m.location()?.url || '')) return;
+    errors.push(`console ${m.type()}: ${m.text()}`);
+  });
+  const text = async (sel) => (await page.locator(sel).first().innerText()).trim();
+  try {
+    const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+    await page.goto('about:blank');
+    await page.goto(BASE + '/index.html#game_token=' + launchToken(), { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    await page.waitForSelector('#btn-play', { state: 'visible', timeout: 20000 });
+    if (await text('#btn-play') !== 'Jouer') throw new Error('title not in French: ' + await text('#btn-play'));
+    if (await text('#btn-settings') !== 'Réglages') throw new Error('settings button not in fr-CA');
+    ok(`${name}: Automatic resolves to the account language (fr-CA); title in French`);
+
+    // Start a practice round in French, then pause it.
+    await page.click('#btn-play');
+    await page.click('#screen-modes .card[data-mode="practice"]');
+    await page.waitForSelector('#screen-setup', { state: 'visible' });
+    if (await text('#setup-heading') !== 'Entraînement') throw new Error('setup not in French');
+    await page.click('#btn-start');
+    await page.waitForFunction(() => /paires/.test(document.getElementById('hud-progress').textContent));
+    const tiles = await page.locator('#board-mirror button').count();
+    await page.click('#btn-pause');
+    await page.waitForSelector('#screen-pause', { state: 'visible' });
+    const choice = page.locator('#screen-pause [data-game-language="choice"]');
+    await choice.scrollIntoViewIfNeeded();
+    const auto = await choice.locator('option').first().textContent();
+    if (!/^Automatique — Français \(Canada\)$/.test(auto)) throw new Error('Automatic label not resolved: ' + auto);
+    if (await page.locator('[data-game-language="choice"]').count() !== 1) throw new Error('expected exactly one language selector');
+    await choice.selectOption('it-IT');
+    await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+    await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+    if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+    if (await text('#pause-heading') !== 'In pausa') throw new Error('pause heading not re-rendered');
+    if (await text('#btn-resume') !== 'Riprendi') throw new Error('resume button not re-rendered');
+    await page.locator('#screen-pause').getByLabel('Movimento ridotto', { exact: true }).waitFor({ state: 'attached' });
+    await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+    await page.fill('[data-game-report="title"]', 'Test report');
+    await page.click('[data-game-report="send"]');
+    await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+    if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+    await choice.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: SHOT('language', name) });
+    const vw = page.viewportSize().width;
+    for (const sel of ['[data-game-language="choice"]', '[data-game-report="send"]', '#set-quality']) {
+      const b = await page.locator(sel).boundingBox();
+      if (b && (b.x < 0 || b.x + b.width > vw + 1)) throw new Error(`${sel} cut off: ${JSON.stringify(b)}`);
+    }
+
+    // Back to the same round: Italian HUD, actions and tile mirror.
+    await page.locator('#btn-resume').scrollIntoViewIfNeeded();
+    await page.click('#btn-resume');
+    await page.waitForSelector('#screen-pause', { state: 'hidden' });
+    if (await text('#hud-objective') !== 'Svuota il tavolo') throw new Error('HUD objective not re-rendered');
+    if (!/coppie/.test(await text('#hud-progress'))) throw new Error('HUD progress not re-rendered');
+    if (await text('#btn-shuffle') !== 'Mescola') throw new Error('action bar not re-rendered');
+    if (await page.locator('#board-mirror button').count() !== tiles) throw new Error('round changed by the language switch');
+    const label = await page.locator('#board-mirror button').first().getAttribute('aria-label');
+    if (!/livello/.test(label)) throw new Error('tile mirror not re-rendered: ' + label);
+    await page.screenshot({ path: SHOT('language-hud', name) });
+    ok(`${name}: Italian chosen mid-round — pause sheet, HUD and tile mirror re-rendered, ui.language saved, report sent`);
+
+    // Back to Automatic → fr-CA.
+    await page.click('#btn-pause');
+    await page.waitForSelector('#screen-pause', { state: 'visible' });
+    await choice.scrollIntoViewIfNeeded();
+    await choice.selectOption('auto');
+    await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+    if (calls.settings['ui.language']?.choice !== 'auto') throw new Error('ui.language auto not saved');
+    if (await text('#pause-heading') !== 'En pause') throw new Error('pause heading not back in French');
+    ok(`${name}: back to Automatic (fr-CA)`);
+  } finally {
+    await context.close();
+  }
+  if (errors.length) throw new Error(`${name} language pass had console output:\n  ${errors.join('\n  ')}`);
+  console.log(`ok - ${name}: language pass, no console errors or warnings`);
+}
+
 // ---------- main ----------
 let browser = null;
 try {
@@ -403,6 +495,8 @@ try {
   await runPass(browser, 'desktop', { viewport: { width: 1280, height: 800 } }, { full: true });
   await runPass(browser, 'mobile',
     { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, { full: false });
+  await runLanguage(browser, 'lang-desktop', { viewport: { width: 1280, height: 800 } });
+  await runLanguage(browser, 'lang-mobile', { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   if (ownServerCalls.length) throw new Error('standalone made own-server requests: ' + ownServerCalls.join(', '));
   console.log('ok - standalone load made zero same-origin /api or /ws requests');
   console.log('\nE2E PASS — quiet-mahjong, desktop + mobile, no page errors');

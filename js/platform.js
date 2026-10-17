@@ -4,7 +4,9 @@
  *
  * Hosted mode is active while the SDK holds a launch token. It covers:
  * account profile nickname, renewal (SDK), one cloud-save slot
- * (`game:<slug>`, loaded remote-first, debounced, flushed on pagehide),
+ * (`game:<slug>`, merged with local progress on load, debounced, flushed on
+ * pagehide; writes after a load are conditional and a 'saveconflict' from
+ * another device reloads, merges and saves again),
  * per-player settings KV, keyboard bindings from the controls API,
  * the platform high-score board (post + read) and the invite share link.
  *
@@ -14,7 +16,46 @@
  * The game wires its state in with `platform.bind({...})` before init().
  */
 
+import { T } from './lang.js';
+
 const SH = () => globalThis.StarHermit;
+
+/**
+ * Merge two progress docs (this device and the cloud copy another device
+ * wrote) without losing either side: larger stat counters and best score,
+ * the better result per journey stage and per daily date, the union of
+ * achievements (earliest unlock time) and friends; the local name wins.
+ */
+export function mergeProgress(local, remote) {
+  const a = local && typeof local === 'object' ? local : {};
+  const b = remote && typeof remote === 'object' ? remote : {};
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const stats = {};
+  for (const k of new Set([...Object.keys(a.stats || {}), ...Object.keys(b.stats || {})])) {
+    stats[k] = Math.max(num((a.stats || {})[k]), num((b.stats || {})[k]));
+  }
+  const better = (x, y) => (!x ? y : !y ? x : num(y.score) > num(x.score) || (num(y.score) === num(x.score) && num(y.ms) && num(y.ms) < num(x.ms)) ? y : x);
+  const bests = (x = {}, y = {}) => {
+    const out = { ...x };
+    for (const [k, v] of Object.entries(y)) out[k] = better(out[k], v);
+    return out;
+  };
+  const achievements = {};
+  for (const k of new Set([...Object.keys(a.achievements || {}), ...Object.keys(b.achievements || {})])) {
+    const va = (a.achievements || {})[k], vb = (b.achievements || {})[k];
+    const times = [va, vb].filter((v) => typeof v === 'number' && v > 0);
+    achievements[k] = times.length ? Math.min(...times) : (va || vb);
+  }
+  return {
+    ...b, ...a,
+    journey: bests(a.journey, b.journey),
+    dailies: bests(a.dailies, b.dailies),
+    achievements,
+    stats,
+    friends: [...new Set([...(a.friends || []), ...(b.friends || [])])],
+    name: a.name || b.name || '',
+  };
+}
 
 /** Keyboard actions (KeyboardEvent.code). Mirrors control.* in starhermit.txt. */
 export const DEFAULT_BINDINGS = {
@@ -33,7 +74,7 @@ export const DEFAULT_BINDINGS = {
 /** Short on-screen label for a KeyboardEvent.code. */
 export function keyLabel(code) {
   const named = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Escape: 'Esc',
-    Space: 'Space', Enter: 'Enter', NumpadEnter: 'Num Enter', Backspace: '⌫', Tab: 'Tab' };
+    Space: T('Space'), Enter: T('Enter'), NumpadEnter: T('Num Enter'), Backspace: '⌫', Tab: 'Tab' };
   if (named[code]) return named[code];
   let m;
   if ((m = /^Key([A-Z])$/.exec(code))) return m[1];
@@ -64,6 +105,7 @@ export const platform = {
       this._enterHosted();
       sh.on('auth', (a) => this._onAuth(a));
       sh.on('saved', (ok) => { this.cloudState = ok ? 'synced' : 'error'; this.d.ui.syncStatus(); });
+      sh.on('saveconflict', () => this.resolveConflict());
       addEventListener('pagehide', () => this.flushCloud());
       document.addEventListener('visibilitychange', () => { if (document.hidden) this.flushCloud(); });
       const p = await sh.profile().catch(() => null);
@@ -106,14 +148,14 @@ export const platform = {
   /* ---- identity: profile nickname (SDK), "Player <id>" fallback. */
   async profileFor(userId) {
     const sh = SH();
-    if (!userId) return 'Player ????????';
-    if (!this.hosted || !sh) return `Player ${String(userId).slice(0, 8)}`;
+    if (!userId) return T('Player {id}', { id: '????????' });
+    if (!this.hosted || !sh) return T('Player {id}', { id: String(userId).slice(0, 8) });
     const p = await sh.profile(userId).catch(() => null);
-    return p ? p.displayName : `Player ${String(userId).slice(0, 8)}`;
+    return p ? p.displayName : T('Player {id}', { id: String(userId).slice(0, 8) });
   },
   displayName() {
-    if (this.hosted) return this._name || `Player ${String(this.userId || '').slice(0, 6)}`;
-    return this.d.progress.data.name || 'Guest';
+    if (this.hosted) return this._name || T('Player {id}', { id: String(this.userId || '').slice(0, 6) });
+    return this.d.progress.data.name || T('Guest');
   },
 
   /* ---- cloud save: one slot via the SDK. localStorage stays the offline
@@ -126,8 +168,12 @@ export const platform = {
     if (!this.hosted || !sh) return;
     const doc = await sh.loadJSON();
     if (doc) {
-      this._applyCloudDoc(doc); // conflict: remote wins
+      // Merge with this device's progress (never let either side overwrite
+      // the other) and write the merge back when the device added anything.
+      const before = JSON.stringify(doc.progress || null);
+      this._applyCloudDoc(doc);
       this.cloudState = 'synced';
+      if (JSON.stringify(this.d.progress.data) !== before) sh.saveJSON(this.cloudDoc(), 0);
     } else if (this.d.hasLocalProgress && this.d.hasLocalProgress()) {
       sh.saveJSON(this.cloudDoc(), 0); // empty slot: seed it from the local copy
     } else {
@@ -141,17 +187,29 @@ export const platform = {
     this._applying = true;
     try {
       if (doc.progress && typeof doc.progress === 'object') {
-        progress.data = { ...progress.data, ...doc.progress };
+        progress.data = mergeProgress(progress.data, doc.progress);
         progress.save();
       }
-      if (doc.settings && typeof doc.settings === 'object') {
-        settings.data = { ...settings.data, ...doc.settings };
+      // Preferences: the platform settings KV is authoritative (loadSettings);
+      // only the one-way tutorial flag is carried over from the cloud copy.
+      if (doc.settings && typeof doc.settings === 'object' && doc.settings.tutorialDone && !settings.data.tutorialDone) {
+        settings.data.tutorialDone = true;
         settings.save();
-        this.d.applySettings?.();
       }
     } finally {
       this._applying = false;
     }
+  },
+  /** Another device saved since our last load: reload, merge, save the merge. */
+  async resolveConflict() {
+    const sh = SH();
+    if (!this.hosted || !sh) return;
+    this.cloudState = 'saving';
+    this.d.ui.syncStatus();
+    const doc = await sh.loadJSON();
+    if (doc) this._applyCloudDoc(doc);
+    if (!sh.saveConflicted()) sh.saveJSON(this.cloudDoc(), 0);
+    this.d.ui.titleStatus?.();
   },
   scheduleCloud() {
     const sh = SH();
@@ -275,17 +333,17 @@ export const platform = {
             };
           }));
           return { entries, note: board === 'friends'
-            ? 'Platform friends board.'
-            : 'Platform board. Personal bests are kept in your profile.' };
+            ? T('Platform friends board.')
+            : T('Platform board. Personal bests are kept in your profile.') };
         }
       }
       return {
         entries: localBoard.all(board),
         note: lbId
-          ? 'Daily records are kept on this device; global and friends boards are platform-wide.'
-          : 'No platform board for this game yet — showing local records.',
+          ? T('Daily records are kept on this device; global and friends boards are platform-wide.')
+          : T('No platform board for this game yet — showing local records.'),
       };
     }
-    return { entries: localBoard.all(board), note: 'Casual board — scores are recorded locally.' };
+    return { entries: localBoard.all(board), note: T('Casual board — scores are recorded locally.') };
   },
 };

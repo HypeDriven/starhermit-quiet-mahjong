@@ -1,6 +1,6 @@
 /**
  * Quiet Mahjong — strings for the Graphics settings panel, per locale.
- * The locale comes from navigator.language (the game has no language setting).
+ * The locale is the game language (js/i18n.js via js/lang.js; Settings → Language).
  */
 
 const en = {
@@ -163,7 +163,7 @@ const PLATFORM = {
     lbPosted: 'Punteggio inviato alla classifica.',
     lbNotPosted: 'Punteggio non inviato alla classifica.',
     act_up: 'Su', act_down: 'Giù', act_left: 'Sinistra', act_right: 'Destra', act_select: 'Seleziona',
-    act_pause: 'Pausa', act_hint: 'Suggerimento', act_undo: 'Annulla', act_shuffle: 'Mescola', act_camera: 'Ripristina visuale',
+    act_pause: 'Pausa', act_hint: 'Indizio', act_undo: 'Annulla', act_shuffle: 'Mescola', act_camera: 'Ripristina visuale',
     keyboard: 'Tastiera',
   },
 };
