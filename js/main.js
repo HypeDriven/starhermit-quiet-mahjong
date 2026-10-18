@@ -314,13 +314,13 @@ const TILE_W = 1.0, TILE_H = 0.42, TILE_D = 1.34, GAP = 0.08;
 const LAYER_STEP = TILE_H + 0.06;
 // Tile texture layout: the face occupies the top of the canvas, a thin strip
 // at the bottom holds the two-tone side (ivory over a coloured backing).
-const TEX_W = 256, TEX_H = 400, TEX_FACE_H = 344;
+const TEX_W = 256, TEX_H = 400, TEX_FACE_H = 344; // authored size; drawn at the preset's face budget
 const FACE_V0 = 1 - TEX_FACE_H / TEX_H;
 
 /** Tile geometry whose UVs map the top plane to the face and the sides to the band. */
-function makeTileGeometry(rounded) {
+function makeTileGeometry(rounded, bevel = 3) {
   const geo = rounded
-    ? new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, 3, 0.07)
+    ? new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, bevel, 0.07)
     : new THREE.BoxGeometry(TILE_W, TILE_H, TILE_D);
   const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index;
   // BoxGeometry planes (px, nx, py, ny, pz, nz) never share vertices, so each
@@ -341,6 +341,15 @@ function makeTileGeometry(rounded) {
   uv.needsUpdate = true;
   geo.clearGroups();
   return geo;
+}
+
+// Run a post pass at a fraction of the frame: EffectComposer.addPass/setSize hand every pass the full
+// frame size, so the pass's own setSize applies the budget's scale (half-res bloom/GTAO below Ultra).
+function atScale(pass, k) {
+  if (!(k < 1)) return pass;
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
 }
 
 /** Soft round sprite for stars, fireflies and match sparks. */
@@ -482,15 +491,22 @@ const render = {
       gpu = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
     } catch { gpu = ''; }
     this.gpu = gpu;
-    const mobile = matchMedia('(pointer: coarse)').matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-    this.detected = G.detectPreset(gpu, { mobile });
+    // StarHermit hardware level (js/gpu-level.js): renderer string + device facts (phone/tablet, cores, memory).
+    let sys = { mobile: matchMedia('(pointer: coarse)').matches || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent),
+      webgl2: this.three.capabilities.isWebGL2 };
+    try {
+      const S = globalThis.StarHermitGpu;
+      if (S) { const d = S.detectSystem(); sys = { ...sys, mobile: sys.mobile || d.mobile, touch: d.touch, screen: d.screen, cores: d.cores, memoryGb: d.memoryGb, astc: d.astc }; }
+    } catch { /* defaults */ }
+    this.gpuLevel = G.detectLevel(gpu, sys);
+    this.detected = G.presetForLevel(this.gpuLevel);
   },
 
   /** Apply saved graphics settings live (no reload). */
   setGraphics(saved) {
     this.saved = saved || {};
     const prev = this.q;
-    const g = G.resolve(this.saved, this.detected);
+    const g = G.resolve(this.saved, this.detected, this.gpuLevel);
     this.q = g;
     this.quality = g.preset;
     const b = document.body.dataset;
@@ -507,7 +523,9 @@ const render = {
     this.frameTimes = [];
     this.postKey = null; // rebuild the post chain on the next frame
     this.postFailed = false;
-    if (prev && this.ok && (prev.detail !== g.detail || prev.reflections !== g.reflections)) {
+    const pb = prev?.budget || {}, nb = g.budget;
+    const assetsChanged = ['material', 'face', 'bevel', 'stone', 'fireflies', 'stars'].some((k) => pb[k] !== nb[k]);
+    if (prev && this.ok && (prev.detail !== g.detail || prev.reflections !== g.reflections || assetsChanged)) {
       this.setTheme(this.theme); // geometry, textures and environment differ: rebuild
     } else if (shadowToggled && this.scene) {
       // Materials pick up shadow-map changes on recompile.
@@ -559,7 +577,7 @@ const render = {
     s.environment = g.reflections === 'on' ? this.environmentMap() : null;
     s.environmentIntensity = 0.28;
     this.tileGeo?.dispose();
-    this.tileGeo = makeTileGeometry(detailed);
+    this.tileGeo = makeTileGeometry(detailed, g.budget.bevel);
 
     // Key light: the moon, with a shadow frustum fitted to the table/board.
     const moon = new THREE.DirectionalLight(0xcfe0ff, detailed ? 1.7 : 1.6);
@@ -574,9 +592,9 @@ const render = {
     s.add(new THREE.HemisphereLight(t.accent, t.ground, detailed ? 0.5 : 0.35));
 
     // Ground.
-    const groundMat = new THREE.MeshStandardMaterial({ color: t.ground, roughness: 1 });
+    const groundMat = this.surface({ color: t.ground, roughness: 1 });
     if (detailed) {
-      groundMat.map = noiseTexture(t.ground, 11, { speck: 0.22 });
+      groundMat.map = noiseTexture(t.ground, 11, { size: g.budget.stone / 2, speck: 0.22 });
       groundMat.map.repeat.set(14, 14);
       groundMat.color.set(0xffffff);
     }
@@ -587,19 +605,18 @@ const render = {
     s.add(ground);
 
     // Table: plain slab, or a textured stone slab with a carved rim.
-    const tableMat = new THREE.MeshStandardMaterial({ color: t.table, roughness: 0.85, metalness: 0.05 });
+    const tableMat = this.surface({ color: t.table, roughness: detailed ? 0.72 : 0.85, metalness: 0.05 });
     if (detailed) {
-      tableMat.map = noiseTexture(t.table, 7, { size: 512, speck: 0.07, veins: 8 });
+      tableMat.map = noiseTexture(t.table, 7, { size: g.budget.stone, speck: 0.07, veins: 8 });
       tableMat.map.repeat.set(2, 2);
       tableMat.color.set(0xffffff);
-      tableMat.roughness = 0.72;
     }
     const table = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 8.5, 0.5, detailed ? 72 : 40), tableMat);
     table.position.y = -0.3;
     table.receiveShadow = true;
     s.add(table);
     if (detailed) {
-      const rimMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.table).multiplyScalar(0.7), roughness: 0.6, metalness: 0.1 });
+      const rimMat = this.surface({ color: new THREE.Color(t.table).multiplyScalar(0.7), roughness: 0.6, metalness: 0.1 });
       const rim = new THREE.Mesh(new THREE.TorusGeometry(9.5, 0.16, 12, 96), rimMat);
       rim.rotation.x = -Math.PI / 2;
       rim.position.y = -0.06;
@@ -612,7 +629,7 @@ const render = {
 
     // Garden props, procedurally placed with a decoration-only stream.
     const rng = R.makeRng(2024, 'decor');
-    const rockMat = new THREE.MeshStandardMaterial({ color: 0x3a4358, roughness: 1, flatShading: detailed });
+    const rockMat = this.surface({ color: 0x3a4358, roughness: 1, flatShading: detailed });
     for (let i = 0; i < 14; i++) {
       const r = 0.3 + rng() * 0.9;
       const geo = new THREE.IcosahedronGeometry(r, detailed ? 1 : 0);
@@ -636,12 +653,12 @@ const render = {
     // Paper lanterns on dark poles; each owns a warm point light.
     this.lanterns = [];
     const glow = new THREE.Color(t.glow);
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.9 });
-    const capMat = new THREE.MeshStandardMaterial({ color: 0x1a1d24, roughness: 0.7 });
+    const poleMat = this.surface({ color: 0x222831, roughness: 0.9 });
+    const capMat = this.surface({ color: 0x1a1d24, roughness: 0.7 });
     for (const [x, z] of [[-10, -7], [10.5, -5], [0, 13]]) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 2.6, 8), poleMat);
       pole.position.set(x, 0.75, z);
-      const lampMat = new THREE.MeshStandardMaterial({
+      const lampMat = this.surface({
         color: 0x553311, emissive: glow, emissiveIntensity: detailed ? 1.6 : 0.9, roughness: 0.6 });
       let lamp;
       if (detailed) {
@@ -676,7 +693,7 @@ const render = {
       halo.scale.setScalar(16);
       s.add(halo);
       // Static star field on the upper sky.
-      const n = 360;
+      const n = g.budget.stars;
       const arr = new Float32Array(n * 3);
       for (let i = 0; i < n; i++) {
         const a = rng() * Math.PI * 2, e = 0.12 + rng() * 1.3;
@@ -694,7 +711,7 @@ const render = {
 
     // Fireflies: slow, bounded, cosmetic (never raycast).
     {
-      const n = 42;
+      const n = g.budget.fireflies;
       const arr = new Float32Array(n * 3);
       const seeds = [];
       for (let i = 0; i < n; i++) {
@@ -722,7 +739,7 @@ const render = {
         [-1, 0, 1], [0, 0, 1], [1, 0, 1], [-0.5, 1, 1], [0.5, 1, 1]];
       spots.forEach(([cx, layer, row]) => {
         const face = faces[Math.floor(drng() * faces.length)];
-        const mesh = new THREE.Mesh(this.tileGeo, this.tileMaterial(face));
+        const mesh = new THREE.Mesh(this.tileGeo, this.sharedTileMaterial(face));
         mesh.position.set(cx * (TILE_W + GAP) + (row ? 0.3 : 0), layer * LAYER_STEP + TILE_H / 2, row * (TILE_D + GAP) - 0.6);
         mesh.rotation.y = (drng() - 0.5) * 0.08;
         mesh.castShadow = mesh.receiveShadow = true;
@@ -741,7 +758,7 @@ const render = {
 
     // Particle pool (bounded, cosmetic; raycast disabled via layers).
     const pGeo = new THREE.BufferGeometry();
-    const MAXP = 400;
+    const MAXP = G.PARTICLE_POOL;
     pGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3));
     const pMat = new THREE.PointsMaterial({
       color: new THREE.Color(t.accent).multiplyScalar(detailed ? 1.6 : 1), size: detailed ? 0.16 : 0.09,
@@ -764,6 +781,8 @@ const render = {
     });
     s.clear();
     this.tiles.clear();
+    for (const m of this.tileMats.values()) m.dispose();
+    this.tileMats.clear();
     for (const tex of this.faceTex.values()) tex.dispose();
     this.faceTex.clear();
     this.buildEnvironment();
@@ -775,9 +794,30 @@ const render = {
     return false;
   },
 
+  // Garden shading per the preset's budget: Lambert on Low, Standard above. Colour and emission are the
+  // same on every model.
+  surface(p) {
+    if (this.q.budget.material !== 'lambert') return new THREE.MeshStandardMaterial(p);
+    const { roughness, metalness, ...base } = p;
+    return new THREE.MeshLambertMaterial(base);
+  },
+
+  // Tile shading per the preset's budget: Lambert on Low, Standard on Balanced, clear-coated Physical
+  // ceramic on High/Ultra (Detail on). Emission keeps the selection / hint tint on every model.
+  // Tiles with the same face share one material (fewer material switches per draw); a selected or hinted
+  // tile gets its own glowing copy while lit.
+  tileMats: new Map(),
+  sharedTileMaterial(face) {
+    let m = this.tileMats.get(face);
+    if (!m) { m = this.tileMaterial(face); this.tileMats.set(face, m); }
+    return m;
+  },
+
   tileMaterial(face) {
     const map = this.faceTexture(face);
-    if (this.q.detail === 'detailed') {
+    const tier = this.q.budget.material;
+    if (tier === 'lambert') return new THREE.MeshLambertMaterial({ map });
+    if (this.q.detail === 'detailed' && tier === 'physical') {
       return new THREE.MeshPhysicalMaterial({
         map, roughness: 0.42, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.2,
       });
@@ -788,8 +828,10 @@ const render = {
   faceTexture(face) {
     if (this.faceTex.has(face)) return this.faceTex.get(face);
     const cv = document.createElement('canvas');
-    cv.width = TEX_W; cv.height = TEX_H;
+    const k = this.q.budget.face / TEX_W; // authored at 256 px, drawn into the preset's face budget
+    cv.width = Math.round(TEX_W * k); cv.height = Math.round(TEX_H * k);
     const g = cv.getContext('2d');
+    g.scale(k, k);
     const t = this.theme;
     const detailed = this.q?.detail === 'detailed';
     const ceramic = '#' + new THREE.Color(t.tile).getHexString();
@@ -871,7 +913,7 @@ const render = {
         continue;
       }
       if (!entry) {
-        const mesh = new THREE.Mesh(this.tileGeo, this.tileMaterial(tile.face));
+        const mesh = new THREE.Mesh(this.tileGeo, this.sharedTileMaterial(tile.face));
         mesh.castShadow = true; mesh.receiveShadow = true;
         mesh.userData.tileId = tile.id;
         const ring = new THREE.Mesh(this.ringGeo,
@@ -883,10 +925,7 @@ const render = {
         this.tiles.set(tile.id, entry);
       }
       // Face can change after a shuffle.
-      if (entry.mesh.material.map !== this.faceTexture(tile.face)) {
-        entry.mesh.material.map = this.faceTexture(tile.face);
-        entry.mesh.material.needsUpdate = true;
-      }
+      const base = this.sharedTileMaterial(tile.face);
       const p = this.worldPos(tile);
       const selected = state.selected === tile.id;
       const hinted = this.hintIds.includes(tile.id) && performance.now() < this.hintUntil;
@@ -894,15 +933,21 @@ const render = {
       entry.mesh.position.set(p.x, p.y + (selected ? 0.16 : 0), p.z);
       entry.ring.position.set(p.x, tile.z * LAYER_STEP + 0.02, p.z);
       entry.ring.visible = free.has(tile.id) && !selected;
-      entry.mesh.material.emissive.setHex(selected ? this.theme.accent : hinted ? this.theme.glow : 0x000000);
+      let mat = base;
+      if (selected || hinted) {
+        if (!entry.hot || entry.hot.map !== base.map) { entry.hot?.dispose(); entry.hot = base.clone(); }
+        mat = entry.hot;
+      }
+      if (entry.mesh.material !== mat) entry.mesh.material = mat;
+      mat.emissive.setHex(selected ? this.theme.accent : hinted ? this.theme.glow : 0x000000);
       // Detailed tiles are brighter (clear-coat + bloom): a softer glow keeps the glyph readable.
       const soft = this.q.detail === 'detailed';
-      entry.mesh.material.emissiveIntensity = selected ? (soft ? 0.1 : 0.5) : hinted ? (soft ? 0.1 : 0.35) : 0;
+      mat.emissiveIntensity = selected ? (soft ? 0.1 : 0.5) : hinted ? (soft ? 0.1 : 0.35) : 0;
       entry.mesh.userData.free = free.has(tile.id);
     }
     // Hide meshes for tiles no longer in state (defensive).
     for (const [id, entry] of this.tiles) {
-      if (!seen.has(id)) { this.scene.remove(entry.mesh, entry.ring); entry.mesh.material.dispose(); entry.ring.material.dispose(); this.tiles.delete(id); }
+      if (!seen.has(id)) { this.scene.remove(entry.mesh, entry.ring); entry.hot?.dispose(); entry.ring.material.dispose(); this.tiles.delete(id); }
     }
     // Marker under selection.
     if (state.selected != null) {
@@ -922,7 +967,7 @@ const render = {
     if (!this.ok) return;
     for (const entry of this.tiles.values()) {
       this.scene.remove(entry.mesh, entry.ring);
-      entry.mesh.material.dispose(); entry.ring.material.dispose();
+      entry.hot?.dispose(); entry.ring.material.dispose();
     }
     this.tiles.clear();
     this.marker.visible = false;
@@ -964,10 +1009,10 @@ const render = {
   },
 
   burst(x, y, z) {
-    const cap = G.PARTICLE_BURST[this.q?.particles] || 0;
+    const cap = this.q ? G.burstSize(this.q) : 0;
     if (settings.data.reducedMotion || !cap) return;
     const rng = R.makeRng(Math.floor(x * 97 + z * 131 + performance.now() % 1000), 'vfx');
-    for (let i = 0; i < cap && this.particleData.length < 400; i++) {
+    for (let i = 0; i < cap && this.particleData.length < G.PARTICLE_POOL; i++) {
       this.particleData.push({
         x, y, z,
         vx: (rng() - 0.5) * 2.4, vy: rng() * 2.4 + 0.8, vz: (rng() - 0.5) * 2.4,
@@ -1091,6 +1136,7 @@ const render = {
     const px = [Math.round(size[0] * this.pixelRatio), Math.round(size[1] * this.pixelRatio)];
     return {
       gpu: this.gpu || '',
+      level: this.gpuLevel,
       detected: this.detected,
       resolved: this.q,
       summary: G.describe(this.q, this.three ? px : null, t),
@@ -1102,7 +1148,7 @@ const render = {
   postKeyFor() {
     const g = this.q;
     if (!g.post || this.postFailed) return 'none';
-    return [g.ao, g.bloom, g.grade, g.antialias, this.size[0], this.size[1], this.pixelRatio].join('|');
+    return [g.ao, g.bloom, g.grade, g.antialias, g.budget.bloomRes, g.budget.aoRes, this.size[0], this.size[1], this.pixelRatio].join('|');
   },
 
   buildPost() {
@@ -1126,11 +1172,11 @@ const render = {
         ao.blendIntensity = 0.75;
         ao.updateGtaoMaterial({ radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
         ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
-        composer.addPass(ao);
+        composer.addPass(atScale(ao, g.budget.aoRes));
       }
       if (g.bloom === 'on') {
         // High threshold: only the moon, lanterns, fireflies and highlights bloom.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.45, 0.92));
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.45, 0.92), g.budget.bloomRes));
       }
       if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
       composer.addPass(new OutputPass());
@@ -2122,7 +2168,8 @@ const gfxUI = {
     $('set-gfx-fps').checked = r.showFps;
     const alias = { bloom: 'bloomS', reflections: 'reflectionsS' };
     const info = render.graphicsInfo((k, v, n) => tr(alias[k] || k, { n }));
-    $('gfx-summary').textContent = `${info.gpu || tr('unknownGpu')} · ${info.summary}`;
+    $('gfx-summary').textContent = [info.gpu || tr('unknownGpu'), info.level != null ? tr('levelN', { n: info.level }) : null, info.summary]
+      .filter(Boolean).join(' · ');
     $('gfx-post-note').hidden = !info.postFailed;
   },
 };

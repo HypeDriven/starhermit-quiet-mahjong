@@ -225,6 +225,7 @@ async function graphicsFlow(page, name) {
   await page.waitForFunction(() => document.body.dataset.gfxBloom === 'off');
   let st = await gfxState(page);
   if (!/2048² shadows/.test(st.summary) || /bloom/.test(st.summary)) throw new Error(`summary not updated: "${st.summary}"`);
+  if (!/ · Level 0 · /.test(st.summary)) throw new Error(`summary lacks the hardware level: "${st.summary}"`);
   await page.waitForTimeout(600); // render a few High frames
   await page.screenshot({ path: SHOT('graphics', name) });
   ok(`${name}: Graphics panel — Low → High, bloom override applied ("${st.summary}")`);
