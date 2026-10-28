@@ -1,0 +1,70 @@
+# Lesson 1 by the keyboard (tools/gen-plays.mjs; generated: do not edit): the mode cards, every pair reached with the
+# arrow keys and chosen with Enter, the results with the next lesson.
+until 300 Quiet Mahjong
+frames 60
+click =Play
+until 60 Choose a mode
+frames 10
+click Learn
+until 120 Tap a glowing free tile
+frames 60
+save lesson
+key ArrowRight 1
+frames 3
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key Enter 1
+frames 5
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key ArrowRight 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key Enter 1
+frames 5
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+key ArrowRight 1
+frames 3
+key Enter 1
+frames 5
+key ArrowLeft 1
+frames 3
+key Enter 1
+frames 5
+frames 5
+until 120 Every pair found
+frames 20
+save lesson-results
+expect Next lesson: Matching pairs

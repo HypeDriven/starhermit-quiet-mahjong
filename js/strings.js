@@ -27,16 +27,12 @@
     ['Score chase', 'Caza de puntos', 'Punktejagd', 'Course aux points', 'Caça aos pontos', 'Caccia al punteggio'],
     ['Compare with global and friends boards.', 'Compárate en las clasificaciones global y de amigos.', 'Vergleiche dich in globalen und Freundes-Bestenlisten.', 'Comparez-vous aux classements mondial et entre amis.', 'Compare-se nos rankings global e de amigos.', 'Confrontati nelle classifiche globale e degli amici.'],
     ['Back', 'Volver', 'Zurück', 'Retour', 'Voltar', 'Indietro'],
-    ['Setup', 'Preparación', 'Vorbereitung', 'Préparation', 'Preparação', 'Preparazione'],
     ['Start', 'Empezar', 'Starten', 'Commencer', 'Começar', 'Inizia'],
 
     // ---- play HUD
-    ['Game board', 'Tablero de juego', 'Spielbrett', 'Plateau de jeu', 'Tabuleiro', 'Tavolo di gioco'],
     ['Clear the board', 'Despeja el tablero', 'Räume das Brett ab', 'Videz le plateau', 'Limpe o tabuleiro', 'Svuota il tavolo'],
-    ['Elapsed time', 'Tiempo transcurrido', 'Verstrichene Zeit', 'Temps écoulé', 'Tempo decorrido', 'Tempo trascorso'],
     ['Score', 'Puntos', 'Punkte', 'Score', 'Pontos', 'Punti'],
     ['Pause', 'Pausa', 'Pause', 'Pause', 'Pausar', 'Pausa'],
-    ['Tile board', 'Tablero de fichas', 'Steinbrett', 'Plateau de tuiles', 'Tabuleiro de peças', 'Tavolo delle tessere'],
     ['Hint', 'Pista', 'Tipp', 'Indice', 'Dica', 'Indizio'],
     ['Shuffle', 'Mezclar', 'Mischen', 'Mélanger', 'Embaralhar', 'Mescola'],
     ['Undo', 'Deshacer', 'Rückgängig', 'Annuler', 'Desfazer', 'Annulla'],
@@ -48,7 +44,6 @@
     ['Board clear!', '¡Tablero despejado!', 'Brett abgeräumt!', 'Plateau vidé !', 'Tabuleiro limpo!', 'Tavolo svuotato!'],
     ['Round over', 'Ronda terminada', 'Runde vorbei', 'Manche terminée', 'Rodada encerrada', 'Partita finita'],
     ['Follow the lesson', 'Sigue la lección', 'Folge der Lektion', 'Suivez la leçon', 'Siga a lição', 'Segui la lezione'],
-    ['{face} (blocked)', '{face} (bloqueada)', '{face} (blockiert)', '{face} (bloquée)', '{face} (bloqueada)', '{face} (bloccata)'],
     ['{face}, layer {z}, free', '{face}, capa {z}, libre', '{face}, Ebene {z}, frei', '{face}, niveau {z}, libre', '{face}, camada {z}, livre', '{face}, livello {z}, libera'],
     ['{face}, layer {z}, free, selected', '{face}, capa {z}, libre, seleccionada', '{face}, Ebene {z}, frei, ausgewählt', '{face}, niveau {z}, libre, sélectionnée', '{face}, camada {z}, livre, selecionada', '{face}, livello {z}, libera, selezionata'],
     ['{face}, layer {z}, blocked', '{face}, capa {z}, bloqueada', '{face}, Ebene {z}, blockiert', '{face}, niveau {z}, bloquée', '{face}, camada {z}, bloqueada', '{face}, livello {z}, bloccata'],
@@ -88,19 +83,10 @@
     ['Paused', 'En pausa', 'Pausiert', 'En pause', 'Pausado', 'In pausa'],
     ['Resume', 'Reanudar', 'Weiter', 'Reprendre', 'Continuar', 'Riprendi'],
     ['Audio', 'Audio', 'Audio', 'Audio', 'Áudio', 'Audio'],
-    ['Music', 'Música', 'Musik', 'Musique', 'Música', 'Musica'],
-    ['Effects', 'Efectos', 'Effekte', 'Effets', 'Efeitos', 'Effetti'],
-    ['Ambience', 'Ambiente', 'Atmosphäre', 'Ambiance', 'Ambiente', 'Ambiente'],
-    ['Voice cues', 'Indicaciones de voz', 'Sprachhinweise', 'Indications vocales', 'Dicas de voz', 'Indicazioni vocali'],
     ['Captions for audio cues', 'Subtítulos para los sonidos', 'Untertitel für Tonsignale', 'Sous-titres des signaux sonores', 'Legendas para sinais sonoros', 'Sottotitoli per i segnali audio'],
     ['Theme', 'Tema', 'Thema', 'Thème', 'Tema', 'Tema'],
     ['Controls & accessibility', 'Controles y accesibilidad', 'Steuerung & Barrierefreiheit', 'Commandes et accessibilité', 'Controles e acessibilidade', 'Comandi e accessibilità'],
-    ['Reduced motion', 'Movimiento reducido', 'Weniger Bewegung', 'Animations réduites', 'Movimento reduzido', 'Movimento ridotto'],
-    ['High contrast', 'Alto contraste', 'Hoher Kontrast', 'Contraste élevé', 'Alto contraste', 'Contrasto elevato'],
-    ['Larger text', 'Texto más grande', 'Größere Schrift', 'Texte plus grand', 'Texto maior', 'Testo più grande'],
     ['Left-handed controls', 'Controles para zurdos', 'Linkshänder-Steuerung', 'Commandes pour gauchers', 'Controles para canhotos', 'Comandi per mancini'],
-    ['Tap-to-select (hold mode off)', 'Tocar para seleccionar (sin mantener)', 'Tippen zum Auswählen (ohne Halten)', 'Toucher pour sélectionner (sans appui long)', 'Tocar para selecionar (sem segurar)', 'Tocca per selezionare (senza tenere premuto)'],
-    ['Haptics', 'Vibración', 'Haptik', 'Retour haptique', 'Vibração', 'Vibrazione'],
     ['Color palette', 'Paleta de colores', 'Farbpalette', 'Palette de couleurs', 'Paleta de cores', 'Tavolozza dei colori'],
     ['Standard', 'Estándar', 'Standard', 'Standard', 'Padrão', 'Standard'],
     ['Deuteranopia-safe', 'Apta para deuteranopía', 'Für Deuteranopie', 'Adaptée à la deutéranopie', 'Adequada a deuteranopia', 'Adatta alla deuteranopia'],
@@ -112,11 +98,9 @@
     ['Leave round', 'Abandonar ronda', 'Runde verlassen', 'Quitter la manche', 'Sair da rodada', 'Abbandona la partita'],
 
     // ---- results
-    ['Round complete', 'Ronda completada', 'Runde beendet', 'Manche terminée', 'Rodada concluída', 'Partita completata'],
     ['Score breakdown', 'Desglose de puntos', 'Punkteaufschlüsselung', 'Détail du score', 'Detalhamento da pontuação', 'Dettaglio del punteggio'],
     ['Total', 'Total', 'Gesamt', 'Total', 'Total', 'Totale'],
     ['Play again', 'Jugar de nuevo', 'Nochmal spielen', 'Rejouer', 'Jogar de novo', 'Gioca ancora'],
-    ['Next', 'Siguiente', 'Weiter', 'Suivant', 'Próximo', 'Avanti'],
     ['Home', 'Inicio', 'Start', 'Accueil', 'Início', 'Home'],
     ['Board clear', 'Tablero despejado', 'Brett abgeräumt', 'Plateau vidé', 'Tabuleiro limpo', 'Tavolo svuotato'],
     ['Every pair found. The garden is quiet again.', 'Encontraste todas las parejas. El jardín vuelve a estar en calma.', 'Alle Paare gefunden. Im Garten ist es wieder still.', 'Toutes les paires trouvées. Le jardin est de nouveau paisible.', 'Todos os pares encontrados. O jardim está tranquilo de novo.', 'Tutte le coppie trovate. Il giardino è di nuovo quieto.'],
@@ -141,9 +125,6 @@
     ['Hint shows a legal pair; Shuffle re-deals the remaining tiles. Both cost score.', 'Pista muestra una pareja válida; Mezclar reparte de nuevo las fichas restantes. Ambas cuestan puntos.', 'Tipp zeigt ein gültiges Paar; Mischen verteilt die übrigen Steine neu. Beides kostet Punkte.', 'Indice montre une paire jouable ; Mélanger redistribue les tuiles restantes. Les deux coûtent des points.', 'Dica mostra um par válido; Embaralhar redistribui as peças restantes. Ambos custam pontos.', 'Indizio mostra una coppia valida; Mescola ridistribuisce le tessere rimaste. Entrambi costano punti.'],
     ['Controls', 'Controles', 'Steuerung', 'Commandes', 'Controles', 'Comandi'],
     ['Pairs and streaks add points; hints, shuffles, undos and invalid taps subtract. Finishing under par adds a time bonus.', 'Las parejas y rachas suman puntos; pistas, mezclas, deshacer y toques no válidos restan. Terminar por debajo del par da un bono de tiempo.', 'Paare und Serien bringen Punkte; Tipps, Mischen, Rückgängig und ungültige Züge kosten welche. Unter Par fertig zu werden gibt einen Zeitbonus.', 'Les paires et les séries rapportent des points ; indices, mélanges, annulations et touches invalides en retirent. Finir sous le par donne un bonus de temps.', 'Pares e sequências somam pontos; dicas, embaralhadas, desfazer e toques inválidos subtraem. Terminar abaixo do par dá bônus de tempo.', 'Coppie e serie danno punti; indizi, mescolate, annullamenti e tocchi non validi li tolgono. Finire sotto il par dà un bonus di tempo.'],
-    ['Space', 'Espacio', 'Leertaste', 'Espace', 'Espaço', 'Spazio'],
-    ['Enter', 'Intro', 'Eingabe', 'Entrée', 'Enter', 'Invio'],
-    ['Num Enter', 'Intro num.', 'Num-Eingabe', 'Entrée num.', 'Enter num.', 'Invio num.'],
 
     // ---- scores, profile
     ['Leaderboards', 'Clasificaciones', 'Bestenlisten', 'Classements', 'Rankings', 'Classifiche'],
@@ -167,18 +148,10 @@
     ['Guest', 'Invitado', 'Gast', 'Invité', 'Convidado', 'Ospite'],
 
     // ---- compat, loading, title status
-    ['3D unavailable', '3D no disponible', '3D nicht verfügbar', '3D indisponible', '3D indisponível', '3D non disponibile'],
-    ['Quiet Mahjong needs WebGL for its 3D table. Your progress and settings are safe. You can still play with the accessible board below.', 'Quiet Mahjong necesita WebGL para su mesa en 3D. Tu progreso y tus ajustes están a salvo. Aún puedes jugar con el tablero accesible de abajo.', 'Quiet Mahjong braucht WebGL für seinen 3D-Tisch. Dein Fortschritt und deine Einstellungen sind sicher. Du kannst trotzdem mit dem barrierefreien Brett unten spielen.', 'Quiet Mahjong a besoin de WebGL pour sa table en 3D. Votre progression et vos réglages sont en sécurité. Vous pouvez quand même jouer avec le plateau accessible ci-dessous.', 'Quiet Mahjong precisa de WebGL para sua mesa em 3D. Seu progresso e suas configurações estão seguros. Você ainda pode jogar com o tabuleiro acessível abaixo.', 'Quiet Mahjong ha bisogno di WebGL per il suo tavolo 3D. Progressi e impostazioni sono al sicuro. Puoi comunque giocare con il tavolo accessibile qui sotto.'],
-    ['Continue in 2D', 'Continuar en 2D', 'In 2D weiterspielen', 'Continuer en 2D', 'Continuar em 2D', 'Continua in 2D'],
-    ['Loading', 'Cargando', 'Wird geladen', 'Chargement', 'Carregando', 'Caricamento'],
-    ['Preparing the garden…', 'Preparando el jardín…', 'Der Garten wird vorbereitet …', 'Préparation du jardin…', 'Preparando o jardim…', 'Preparazione del giardino…'],
-    ['Connecting…', 'Conectando…', 'Verbindung wird hergestellt …', 'Connexion…', 'Conectando…', 'Connessione…'],
-    ['Building the garden…', 'Construyendo el jardín…', 'Der Garten wird aufgebaut …', 'Construction du jardin…', 'Construindo o jardim…', 'Costruzione del giardino…'],
     ['A round is in progress.', 'Hay una ronda en curso.', 'Eine Runde läuft noch.', 'Une manche est en cours.', 'Há uma rodada em andamento.', 'C’è una partita in corso.'],
     ['Resume round', 'Reanudar ronda', 'Runde fortsetzen', 'Reprendre la manche', 'Retomar rodada', 'Riprendi la partita'],
     ['Signed in as {name}.', 'Sesión iniciada como {name}.', 'Angemeldet als {name}.', 'Connecté en tant que {name}.', 'Conectado como {name}.', 'Accesso come {name}.'],
     ['Offline — fully playable, scores kept locally.', 'Sin conexión: se puede jugar por completo y las puntuaciones se guardan en el dispositivo.', 'Offline – voll spielbar, Punktzahlen bleiben lokal.', 'Hors ligne — entièrement jouable, scores conservés sur l’appareil.', 'Offline — totalmente jogável, pontuações salvas no dispositivo.', 'Offline: completamente giocabile, punteggi salvati sul dispositivo.'],
-    ['Something went wrong while loading. Reload to try again.', 'Algo salió mal al cargar. Vuelve a cargar la página para intentarlo de nuevo.', 'Beim Laden ist etwas schiefgelaufen. Lade die Seite neu, um es erneut zu versuchen.', 'Un problème est survenu au chargement. Rechargez la page pour réessayer.', 'Algo deu errado ao carregar. Recarregue para tentar de novo.', 'Qualcosa è andato storto durante il caricamento. Ricarica per riprovare.'],
 
     // ---- setup
     ['Rules', 'Reglas', 'Regeln', 'Règles', 'Regras', 'Regole'],
@@ -204,7 +177,6 @@
     ['Journey stage.', 'Etapa de la travesía.', 'Reiseetappe.', 'Étape du voyage.', 'Etapa da jornada.', 'Tappa del viaggio.'],
     ['Constrained goals: move limits, speed targets, restricted tools.', 'Objetivos con restricciones: límites de movimientos, metas de velocidad, herramientas restringidas.', 'Ziele mit Vorgaben: Zuglimits, Zeitziele, eingeschränkte Hilfen.', 'Objectifs contraints : coups limités, objectifs de vitesse, outils restreints.', 'Metas com restrições: limites de jogadas, metas de velocidade, ferramentas restritas.', 'Obiettivi vincolati: limiti di mosse, obiettivi di velocità, strumenti limitati.'],
     ['Daily — {date}', 'Diario: {date}', 'Täglich – {date}', 'Quotidien — {date}', 'Diário — {date}', 'Giornaliera — {date}'],
-    ['Today\'s board was marked defective and is excluded from ranking. You can still play it.', 'El tablero de hoy se marcó como defectuoso y no cuenta para la clasificación. Aún puedes jugarlo.', 'Das heutige Brett wurde als fehlerhaft markiert und zählt nicht für die Wertung. Du kannst es trotzdem spielen.', 'Le plateau du jour a été signalé comme défectueux et ne compte pas au classement. Vous pouvez quand même y jouer.', 'O tabuleiro de hoje foi marcado como defeituoso e não conta para o ranking. Você ainda pode jogá-lo.', 'Il tavolo di oggi è stato segnalato come difettoso ed è escluso dalla classifica. Puoi comunque giocarlo.'],
     ['One shared seed for everyone (UTC day). Scores are kept as local records and also posted to the platform-wide board.', 'Una semilla compartida para todos (día UTC). Las puntuaciones se guardan como récords locales y también se publican en la clasificación de la plataforma.', 'Ein gemeinsamer Seed für alle (UTC-Tag). Punktzahlen bleiben als lokale Rekorde und werden auch in die Plattform-Bestenliste eingetragen.', 'Une graine commune pour tous (jour UTC). Les scores sont gardés comme records locaux et publiés aussi au classement de la plateforme.', 'Uma semente compartilhada para todos (dia UTC). As pontuações ficam como recordes locais e também vão para o ranking da plataforma.', 'Un seme condiviso per tutti (giorno UTC). I punteggi restano come record locali e vanno anche nella classifica della piattaforma.'],
     ['One shared seed for everyone (UTC day). Scores are kept as local records on this device.', 'Una semilla compartida para todos (día UTC). Las puntuaciones se guardan como récords locales en este dispositivo.', 'Ein gemeinsamer Seed für alle (UTC-Tag). Punktzahlen bleiben als lokale Rekorde auf diesem Gerät.', 'Une graine commune pour tous (jour UTC). Les scores sont gardés comme records locaux sur cet appareil.', 'Uma semente compartilhada para todos (dia UTC). As pontuações ficam como recordes locais neste dispositivo.', 'Un seme condiviso per tutti (giorno UTC). I punteggi restano come record locali su questo dispositivo.'],
     ['Seed', 'Semilla', 'Seed', 'Graine', 'Semente', 'Seme'],
@@ -288,6 +260,12 @@
     ['The grand layout, unhurried but unaided.', 'La gran disposición, sin prisa pero sin ayuda.', 'Die große Anordnung, ohne Eile, aber ohne Hilfe.', 'La grande disposition, sans hâte mais sans aide.', 'A grande disposição, sem pressa mas sem ajuda.', 'La grande disposizione, senza fretta ma senza aiuti.'],
 
     // ---- content: achievements
+    // ---- the engine build's settings sheet
+    ['Settings', 'Ajustes', 'Einstellungen', 'Paramètres', 'Configurações', 'Impostazioni'],
+    ['Graphics', 'Gráficos', 'Grafik', 'Graphismes', 'Gráficos', 'Grafica'],
+    ['Open Options', 'Abrir opciones', 'Optionen öffnen', 'Ouvrir les options', 'Abrir opções', 'Apri opzioni'],
+    ['Change controls', 'Cambiar controles', 'Steuerung ändern', 'Modifier les commandes', 'Alterar controles', 'Cambia comandi'],
+    ['Volumes, graphics quality, language, larger text, high contrast, reduced motion and vibration are in the StarHermit Options.', 'El volumen, la calidad gráfica, el idioma, el texto más grande, el alto contraste, el movimiento reducido y la vibración están en las Opciones de StarHermit.', 'Lautstärke, Grafikqualität, Sprache, größere Schrift, hoher Kontrast, reduzierte Bewegung und Vibration findest du in den StarHermit-Optionen.', 'Le volume, la qualité graphique, la langue, le texte agrandi, le contraste élevé, les animations réduites et la vibration se trouvent dans les Options StarHermit.', 'Volume, qualidade gráfica, idioma, texto maior, alto contraste, movimento reduzido e vibração ficam nas Opções do StarHermit.', 'Volume, qualità grafica, lingua, testo più grande, contrasto elevato, movimento ridotto e vibrazione sono nelle Opzioni di StarHermit.'],
     ['First Clear', 'Primer tablero', 'Erstes Brett', 'Premier plateau', 'Primeiro tabuleiro', 'Primo tavolo'],
     ['Finish your first board.', 'Termina tu primer tablero.', 'Beende dein erstes Brett.', 'Terminez votre premier plateau.', 'Termine seu primeiro tabuleiro.', 'Completa il tuo primo tavolo.'],
     ['Steady Hands', 'Pulso firme', 'Ruhige Hände', 'Mains sûres', 'Mãos firmes', 'Mani ferme'],
@@ -313,12 +291,10 @@
   };
   // es-ES: Spain Spanish wording.
   T['es-ES'] = {
-    'Today\'s board was marked defective and is excluded from ranking. You can still play it.': 'El tablero de hoy se ha marcado como defectuoso y no cuenta para la clasificación. Aún puedes jugarlo.',
-    'Something went wrong while loading. Reload to try again.': 'Algo ha ido mal al cargar. Vuelve a cargar la página para intentarlo de nuevo.',
-    'Haptics': 'Vibración háptica'
   };
   // fr-CA: Canadian French (pointage for score).
   T['fr-CA'] = {
+    'Settings': 'Réglages',
     'Score': 'Pointage',
     'Score breakdown': 'Détail du pointage',
     'Total score {n}.': 'Pointage total : {n}.',
@@ -327,4 +303,4 @@
   };
 
   root.QM_STRINGS = T;
-})(typeof self !== 'undefined' ? self : this);
+})(globalThis);

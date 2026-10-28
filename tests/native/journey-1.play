@@ -1,0 +1,69 @@
+# Journey stage 1 "First Step" on the desktop by the pointer (tools/gen-plays.mjs; generated: do not edit): the title, the
+# stage list, the stage setup, a hint, the pause sheet with Help and back, the board cleared by pressing tiles by name,
+# the results with Next, Home.
+until 300 Quiet Mahjong
+frames 60
+save title
+click =Journey
+until 60 Forty authored stages
+frames 10
+save journey
+click 1. First Step
+until 60 Journey stage.
+frames 10
+save stage
+click =Start
+until 120 Clear the board
+frames 60
+save board
+key KeyH 1
+frames 20
+save hint
+key Escape 1
+until 60 =Resume
+frames 10
+save pause
+click =How to play
+until 60 Goal
+frames 10
+save help
+click =Back
+until 60 =Resume
+frames 10
+click =Resume
+until 60 Clear the board
+frames 10
+frames 5
+click =petal 4, layer 1, free #1
+frames 5
+click =petal 4, layer 1, free
+frames 5
+click =stone 8, layer 1, free #1
+frames 5
+click =stone 8, layer 1, free
+frames 5
+click =wind 4, layer 1, free #1
+frames 5
+click =wind 4, layer 1, free
+frames 5
+click =moon 4, layer 1, free #1
+frames 5
+click =moon 4, layer 1, free
+frames 5
+click =wave 6, layer 1, free #1
+frames 5
+click =wave 6, layer 1, free
+frames 5
+click =moon 2, layer 1, free #1
+frames 5
+click =moon 2, layer 1, free
+frames 5
+until 120 Every pair found
+frames 20
+save results
+expect Board clear
+expect Next: Open Water
+click =Home
+until 120 Quiet Mahjong
+frames 10
+expect A moonlit garden

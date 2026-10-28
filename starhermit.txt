@@ -1,11 +1,24 @@
 name=Quiet Mahjong
 description=Remove matching pairs of uncovered tiles to clear layered mahjong layouts in a moonlit garden.
-launch=index.html
 owner=2712e04e-461b-4d23-81ae-e40b429128a8
 server=score-script.js
 cover=cover.jpg
 
-# Keyboard actions (KeyboardEvent.code; remappable via the platform controls API).
+# StarHermit engine script game: one package, played natively by the
+# StarHermit client and in browsers by the engine's web runtime. Browsers open
+# launch=index.html, the loader `npm run package` writes (it pins the engine
+# on wiki.starhermit.com by hash; never edit it). Re-run `npm run package`
+# after every change and commit index.html + starhermit-files.json.
+launch=index.html
+engine.api=1
+engine.entry=native/main.ts
+engine.version=1.19.3
+engine.minor=20
+engine.capabilities=platform,storage,clipboard
+
+# Keyboard controls (players rebind keys and pads in the runtime's Options).
+# Tiles also take the pointer or a finger on the 3D board (tap a free tile,
+# then its partner; drag to orbit the camera); every action also has a button.
 control.up=ArrowUp | Move focus up
 control.down=ArrowDown | Move focus down
 control.left=ArrowLeft | Move focus left
@@ -16,3 +29,20 @@ control.hint=KeyH | Hint
 control.undo=KeyU | Undo
 control.shuffle=KeyS | Shuffle
 control.camera=KeyC | Reset camera
+engine.group.up=Board
+engine.group.hint=Assists
+engine.group.pause=Round
+
+# Gamepad defaults (the browser build's pad mapping): the D-pad or left stick
+# moves the focus, A selects, B and Start pause, X shuffles, Y hints, Select
+# undoes; the right stick press resets the camera.
+engine.gamepad.up=DpadUp+LeftStickUp
+engine.gamepad.down=DpadDown+LeftStickDown
+engine.gamepad.left=DpadLeft+LeftStickLeft
+engine.gamepad.right=DpadRight+LeftStickRight
+engine.gamepad.select=South
+engine.gamepad.pause=Start+East
+engine.gamepad.shuffle=West
+engine.gamepad.hint=North
+engine.gamepad.undo=Select
+engine.gamepad.camera=RightStickPress

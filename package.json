@@ -1,10 +1,17 @@
 {
   "name": "quiet-mahjong",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "Quiet Mahjong — a moonlit-garden pair-removal puzzle on the StarHermit engine.",
   "scripts": {
-    "test": "node --test tests/gfx.test.mjs tests/platform.test.mjs tests/i18n.test.mjs && node tests/rules.test.mjs && node tools/validate-content.mjs",
-    "test:e2e": "node tests/e2e.mjs",
-    "test:hosted": "node tests/hosted-platform.check.mjs"
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node tests/rules.test.mjs && node tools/validate-content.mjs && node --test tests/progress.test.mjs tests/i18n.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plays": "node tools/gen-plays.mjs",
+    "start": "node server.js"
   }
 }

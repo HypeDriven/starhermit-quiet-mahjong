@@ -1,0 +1,91 @@
+# Moon Sprint (timed challenge) on a phone held upright, by touch (tools/gen-plays.mjs; generated: do not edit), then
+# the profile and Score chase.
+# viewport 390x844@3
+until 300 Quiet Mahjong
+frames 60
+save phone-title
+touch =Play
+until 60 Choose a mode
+frames 10
+save phone-modes
+touch Challenge
+until 60 Constrained goals
+frames 10
+touch Moon Sprint
+until 60 Beat the clock
+frames 10
+save phone-setup
+touch =Start
+until 120 left
+frames 60
+save phone-board
+frames 5
+touch =star 1, layer 1, free #1
+frames 5
+touch =star 1, layer 1, free
+frames 5
+touch =lantern 3, layer 1, free #1
+frames 5
+touch =lantern 3, layer 1, free
+frames 5
+touch =wave 3, layer 1, free #1
+frames 5
+touch =wave 3, layer 1, free
+frames 5
+touch =petal 3, layer 1, free #1
+frames 5
+touch =petal 3, layer 1, free
+frames 5
+touch =wave 1, layer 1, free #1
+frames 5
+touch =wave 1, layer 1, free
+frames 5
+touch =star 3, layer 1, free #1
+frames 5
+touch =star 3, layer 1, free
+frames 5
+touch =lantern 4, layer 1, free #1
+frames 5
+touch =lantern 4, layer 1, free
+frames 5
+touch =moon 2, layer 1, free #1
+frames 5
+touch =moon 2, layer 1, free
+frames 5
+touch =wind 4, layer 1, free #1
+frames 5
+touch =wind 4, layer 1, free
+frames 5
+touch =stone 4, layer 1, free #1
+frames 5
+touch =stone 4, layer 1, free
+frames 5
+touch =wave 8, layer 1, free #1
+frames 5
+touch =wave 8, layer 1, free
+frames 5
+touch =moon 7, layer 1, free #1
+frames 5
+touch =moon 7, layer 1, free
+frames 5
+until 120 Every pair found
+frames 20
+save phone-results
+touch =Home
+until 120 Quiet Mahjong
+frames 10
+touch =Profile
+until 60 Display name
+frames 10
+save phone-profile
+expect First Clear
+touch =Back
+until 60 Quiet Mahjong
+frames 10
+touch =Play
+until 60 Choose a mode
+frames 10
+touch Score chase
+until 60 Leaderboards
+frames 10
+save phone-scores

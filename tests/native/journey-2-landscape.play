@@ -1,0 +1,53 @@
+# Journey stage 2 on a phone held sideways, by touch (tools/gen-plays.mjs; generated: do not edit): a shuffle, the
+# pause sheet, the board cleared.
+# viewport 844x390@3
+until 300 Quiet Mahjong
+frames 60
+save land-title
+touch =Journey
+until 60 Forty authored stages
+frames 10
+touch 2. Open Water
+until 60 Journey stage.
+frames 10
+touch =Start
+until 120 Clear the board
+frames 60
+save land-board
+touch =Shuffle
+frames 20
+touch =Pause
+until 60 =Resume
+frames 10
+save land-pause
+touch =Resume
+until 60 Clear the board
+frames 20
+frames 5
+touch =moon 4, layer 1, free #1
+frames 5
+touch =moon 4, layer 1, free
+frames 5
+touch =wave 6, layer 1, free #1
+frames 5
+touch =wave 6, layer 1, free
+frames 5
+touch =moon 2, layer 1, free #1
+frames 5
+touch =moon 2, layer 1, free
+frames 5
+touch =star 2, layer 1, free #1
+frames 5
+touch =star 2, layer 1, free
+frames 5
+touch =lantern 2, layer 1, free #1
+frames 5
+touch =lantern 2, layer 1, free
+frames 5
+touch =petal 9, layer 1, free #1
+frames 5
+touch =petal 9, layer 1, free
+frames 5
+until 120 Every pair found
+frames 20
+save land-results
