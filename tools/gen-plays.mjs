@@ -26,6 +26,23 @@ function clickLine(s, id, verb) {
   return `${verb} =${me.name}${same.length > 1 ? ` #${nth}` : ''}`;
 }
 
+/** A round's presses for the browser check: { name, nth } per tile (nth from 1), or 'Shuffle'. */
+export function pressSequence(config, { shuffleFirst = false } = {}) {
+  const s = R.init(config);
+  const out = [];
+  if (shuffleFirst) { R.apply(s, { t: 'shuffle' }); }
+  while (s.status === 'active') {
+    const p = R.legalPairs(s);
+    if (!p.length) { out.push('Shuffle'); R.apply(s, { t: 'shuffle' }); continue; }
+    for (const id of p[0]) {
+      const m = /^\w+ =(.*?)(?: #(\d+))?$/.exec(clickLine(s, id, 'click'));
+      out.push({ name: m[1], nth: Number(m[2] || 1) });
+      R.apply(s, { t: 'tap', id });
+    }
+  }
+  return out;
+}
+
 /** main.ts moveFocus, mirrored. */
 function moveFocus(s, focusId, dx, dy) {
   const free = R.freeTiles(s).sort((a, b) => a.z - b.z || a.y - b.y || a.x - b.x);

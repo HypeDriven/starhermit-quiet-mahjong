@@ -15,6 +15,9 @@ engine.entry=native/main.ts
 engine.version=1.19.3
 engine.minor=20
 engine.capabilities=platform,storage,clipboard
+# Ultra draws each tile face at 512×800 (as the browser build did): a Grand
+# board's 51 faces need more than the standing 56 MiB of images.
+engine.limits.image_mib=192
 
 # Keyboard controls (players rebind keys and pads in the runtime's Options).
 # Tiles also take the pointer or a finger on the 3D board (tap a free tile,

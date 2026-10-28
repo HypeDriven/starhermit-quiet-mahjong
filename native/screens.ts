@@ -605,7 +605,8 @@ function actions(L: Layout, st: State, live: boolean): void {
   const one = (b: (typeof list)[number], width: number | null): void => {
     const hit = ui.style("action", width != null ? { width, minWidth: 0, padding: { start: 4, end: 4, top: 10, bottom: 10 } } as ui.Style : {}).id(b.id)
       .button(b.aria ?? b.text, { disabled: !live || !b.ok || st.status !== "active", ...(b.aria ? { content: () => { ui.style("action", { background: "#00000000", border: { width: 0 }, padding: 0, minWidth: 0, minHeight: 0 } as ui.Style).label(b.text); } } : {}) });
-    if (hit && !fresh(0)) later(b.act);
+    // focus leaves the HUD button, so Enter / Space choose the focused tile again
+    if (hit && !fresh(0)) later(() => { b.act(); ui.setFocus(null); });
   };
   if (L.short) {
     const r = ui.place("hud-actions", { anchor: platform.options.leftHanded ? "start" : "end", x: pad, y: 0 }, () => {

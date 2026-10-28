@@ -187,11 +187,48 @@ function sharedTileMaterial(face: string): Material {
   return m;
 }
 function tileMaterial(face: string): Material {
-  const map = faceTexture(face);
   const tier = look?.budget.material ?? "standard";
-  if (tier === "lambert") return new MeshLambertMaterial({ map });
-  if (detailed() && tier === "physical") return new MeshPhysicalMaterial({ map, roughness: 0.42, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.2 });
-  return new MeshStandardMaterial({ map, roughness: 0.35, metalness: 0.02 });
+  const m = tier === "lambert" ? new MeshLambertMaterial({})
+    : detailed() && tier === "physical" ? new MeshPhysicalMaterial({ roughness: 0.42, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.2 })
+      : new MeshStandardMaterial({ roughness: 0.35, metalness: 0.02 });
+  const gen = worldGen;
+  later(() => {
+    if (gen !== worldGen) return; // the world was rebuilt meanwhile
+    const map = faceTexture(face);
+    m.map = map;
+    m.color.set(0xffffff);
+  }, () => m.color.set(theme.tile));
+  return m;
+}
+
+// Canvas work: the engine bounds a frame's canvas drawing (200 M units). Ultra's 512 × 800 tile faces and stone textures
+// for a whole board do not fit one frame, so textures are drawn as jobs: what fits now, the rest on the next frames
+// (a face shows its plain glaze colour until then).
+const jobs: (() => void)[] = [];
+let jobsDone = 0;
+/** Runs `job` now if the frame's canvas work allows, else on a later frame (`meanwhile` runs at once then). */
+let jobFrame = -1, jobsThisFrame = 0;
+function later(job: () => void, meanwhile?: () => void): void {
+  if (!jobs.length && room() && tryJob(job)) return;
+  meanwhile?.();
+  jobs.push(job);
+}
+/** At most 8 Ultra-sized textures a frame (a whole board's 512 × 800 faces in one frame would pass the frame's 96 MiB upload bound). */
+function room(): boolean {
+  const f = frame().frame;
+  if (f !== jobFrame) { jobFrame = f; jobsThisFrame = 0; }
+  return jobsThisFrame < ((look?.budget.face ?? 256) >= 512 ? 8 : 64);
+}
+function tryJob(job: () => void): boolean {
+  try { job(); jobsDone++; jobsThisFrame++; return true; } catch (e) {
+    if (e instanceof RangeError && /canvas work budget/.test(e.message)) return false;
+    throw e;
+  }
+}
+function runJobs(): void {
+  const before = jobsDone;
+  while (jobs.length && room() && tryJob(jobs[0]!)) jobs.shift();
+  if (jobsDone !== before && lastState) syncBoard(lastState); // hot copies take the finished faces
 }
 function faceTexture(face: string): Texture {
   const hit = faceTex.get(face);
@@ -279,7 +316,10 @@ function fitShadow(radius: number): void {
 }
 
 // ---------------------------------------------------------------------------- the garden
+let worldGen = 0;
 function disposeWorld(): void {
+  jobs.length = 0;
+  worldGen++;
   world.traverse((o: Object3D) => {
     const m = o as Mesh;
     if (m.geometry && m.geometry !== tileGeo && m.geometry !== ringGeo) m.geometry.dispose();
@@ -319,11 +359,12 @@ function buildEnvironment(): void {
 
   // ground
   const groundMat = surface({ color: t.ground, roughness: 1 });
-  if (det) {
-    groundMat.map = noiseTexture(t.ground, 11, { size: g.budget.stone / 2, speck: 0.22 });
-    groundMat.map.repeat.set(14, 14);
+  if (det) later(() => {
+    const map = noiseTexture(t.ground, 11, { size: g.budget.stone / 2, speck: 0.22 });
+    map.repeat.set(14, 14);
+    groundMat.map = map;
     groundMat.color.set(0xffffff);
-  }
+  });
   const ground = new Mesh(new CircleGeometry(60, 40), groundMat);
   ground.rotation.x = -PI / 2;
   ground.position.y = -0.55;
@@ -332,11 +373,12 @@ function buildEnvironment(): void {
 
   // table: plain slab, or a textured stone slab with a carved rim
   const tableMat = surface({ color: t.table, roughness: det ? 0.72 : 0.85, metalness: 0.05 });
-  if (det) {
-    tableMat.map = noiseTexture(t.table, 7, { size: g.budget.stone, speck: 0.07, veins: 8 });
-    tableMat.map.repeat.set(2, 2);
+  if (det) later(() => {
+    const map = noiseTexture(t.table, 7, { size: g.budget.stone, speck: 0.07, veins: 8 });
+    map.repeat.set(2, 2);
+    tableMat.map = map;
     tableMat.color.set(0xffffff);
-  }
+  });
   const table = new Mesh(new CylinderGeometry(9.5, 8.5, 0.5, det ? 72 : 40), tableMat);
   table.position.y = -0.3;
   table.receiveShadow = true;
@@ -793,6 +835,7 @@ export function update(): void {
     camera.updateProjectionMatrix();
     if (lastState) frameCamera();
   }
+  runJobs();
   if (!lastState) titleCamera(dt);
   updateCamera(dt);
   updateParticles(dt);
