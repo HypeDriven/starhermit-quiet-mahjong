@@ -1,11 +1,11 @@
-# Quiet Mahjong — Product and Game Specification
+# Quiet Mahjong — Game Specification
 
-**Document status:** design specification only; no implementation is included.  
-**Game index:** 5  
-**Genre:** Pair-removal puzzle  
-**Players:** 1 player; optional asynchronous score comparison  
-**Targets:** desktop browsers, mobile browsers, landscape and portrait where practical  
-**Rendering direction:** Three.js-first presentation with a fully usable semantic HTML interface layer
+**Document status:** running specification of the shipped game (present tense).
+**Game index:** 5
+**Genre:** Pair-removal puzzle
+**Players:** 1 player; asynchronous score comparison
+**Targets:** the StarHermit client (native) and browsers (the engine's web runtime), desktop and phones, landscape and portrait
+**Technology:** a StarHermit engine script game (engine 1.19.3, host API minor 20): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
 
 ## 1. Product vision
 
@@ -41,7 +41,7 @@ Track completion time, no-hint streaks, and reshuffles; every generated deal mus
 
 - **Learn:** interactive lessons introduce one rule at a time and require the player to perform the action.
 - **Journey:** authored progression with gradually combined mechanics and periodic mastery stages.
-- **Daily:** one shared seed and ruleset per UTC day, from the device clock.
+- **Daily:** one shared seed and ruleset per UTC day, from the platform's clock (the device's when offline).
 - **Practice:** selectable difficulty, restart, undo where rules permit, and no effect on competitive rating.
 - **Challenge:** constrained goals such as move limits, speed targets, altered layouts, or restricted tools.
 - **Score chase:** asynchronous global and friends comparisons using validated seeds and rulesets.
@@ -60,200 +60,81 @@ Track completion time, no-hint streaks, and reshuffles; every generated deal mus
 
 Every transition has one owner and an explicit reason. Backgrounding pauses solo simulation. In hosted play, the authoritative clock continues where rules require it, while the returning client receives a fresh snapshot and a concise “while you were away” summary.
 
-## 3. Interaction and user-interface design
+## 3. Screens and interaction
 
-### Information hierarchy
+### Screens
 
-1. **Primary:** playfield, current objective, legal interaction target, and immediate danger or turn state.
-2. **Secondary:** score/progress, remaining moves or time, opponent/party status where applicable.
-3. **Tertiary:** settings, social controls, cosmetics, help, and history.
+- **Title** — a centred panel over the 3D garden (a slow orbit around the stone table with eleven decorative tiles): the name, the tagline, **Play**, **Resume round** when an interrupted round is stored on this device, Daily challenge, Journey, Profile, Settings, Invite a friend (signed in), Sign in with StarHermit (signed out) and a status line (signed in as / offline, a round in progress).
+- **Choose a mode** — six cards: Learn (starts the first lesson), Journey, Daily, Practice, Challenge, Score chase; Back.
+- **Setup** — heading, description and the facts (rules, par duration, players, assists, ranked: platform board / local records / no), then per mode: Practice's five sizes (Lesson 6, Small 12, Medium 24, Large 36, Grand 54 pairs; Medium preselected), Journey's forty stage cards (cleared ones show their best score, the next uncleared one is highlighted; Start continues there), a stage's own setup with its theme, Challenge's four cards (Start runs the first), the Daily's date, seed and board size. Start and Back (to the modes).
+- **Play** — the 3D table fills the window. Top bar: the objective (the lesson's text in Learn; "Board clear!" / "Round over" at the end), pairs removed of the total with the streak, the elapsed time with the tap or time limit left, the score and the pause button. Actions: Hint, Shuffle, Undo and Camera (reset), each disabled when the rules do not allow it. A message line shows errors ("Those faces do not match."), achievements and the lesson's instruction; sound captions (when on) show under the top bar. Free tiles carry a soft outline and a ring under them; the selected tile lifts with a pulsing marker; a hint makes its pair glow for 2.2 s; a removal bursts sparks.
+- **Paused / Settings** — one sheet (opened by Pause, Escape or from the title as Settings): Resume (in a round); Audio: the note that volumes, graphics, language, larger text, high contrast, reduced motion and vibration are in the StarHermit Options, **Open Options**, Captions for audio cues; Graphics: Theme (Moonlit Garden, Plum Dawn, Jade Rain, Ember Evening, Winter Quiet; Journey stages and challenges use their own theme); Controls & accessibility: Left-handed controls (the action row reversed), Color palette (standard, deuteranopia-, protanopia-, tritanopia-safe family bands), the current key bindings and **Change controls**; Help: How to play, Replay tutorial; Leave round (in a round) or Back.
+- **Results** — Board clear / Round over, the reason, the score table (pairs removed, streak bonus, time bonus, completion, penalties, total), time · hints · shuffles · invalid taps · best streak, new achievements, the leaderboard line (signed in), Play again, Next (the next Journey stage or lesson) and Home.
+- **How to play** — six cards: Goal, Free tiles, Select, Stuck, Controls (the live bindings), Score; Back (to the pause sheet in a round).
+- **Leaderboards** (Score chase) — Global / Daily / Friends tabs, a note on where the scores come from and the top twenty.
+- **Profile** — the display name (a text field for guests, the account's name when signed in), the save's sync state, stats (rounds, clears, best score, pairs) and the six achievements (◆ unlocked, ◇ locked).
 
-The Three.js canvas fills the game region but is never the only UI. Menus, text, forms, chat, settings, and assistive descriptions use semantic HTML over or beside the canvas. Maintain a single shared layout model so DOM labels align with projected Three.js targets.
+Overlays (pause, results, help, score chase, profile) dim the garden; the play view's top bar and actions stay under the dim.
 
-### Responsive layouts
+### Layouts
 
-- **Wide desktop (≥1024 CSS px):** centered playfield, objective/progression rail on the left, contextual actions and social/status rail on the right. Maximum line length is 70 characters.
-- **Compact desktop/tablet:** playfield remains central; secondary rails collapse into drawers. Pointer hover may preview but never be required.
-- **Portrait mobile:** top safe-area status bar, square or perspective-fit playfield, bottom thumb-zone action tray, and sheet-based secondary panels. Never place critical controls under browser chrome or display cutouts.
-- **Landscape mobile:** reserve a narrow status rail; preserve at least 44×44 CSS-pixel targets and 8-pixel separation.
-- **Large screens (above 1600×1000):** the shared `ui-scale.js` sets `--ui-scale` (`min(w/1600, h/1000)`, capped at 2.5); menu/overlay screens, HUD bars, toasts, caption, loading and frame-rate meter zoom by it, while the 3D stage and the projected tile mirror stay unzoomed. Modal overlay screens dim the scene behind their panel.
-- React to resize, orientation, device-pixel-ratio, safe-area insets, virtual keyboard, and visibility changes without losing input or restarting the round.
-
-### Screens and overlays
-
-- **Title/home:** Play is dominant; daily challenge, journey progress, and profile are one level below.
-- **Mode setup:** show rules, expected duration, player count, assists, and whether the result is ranked before commitment.
-- **Play HUD:** objective, progress, current actor/state, pause, and only context-relevant actions.
-- **Pause/settings:** resume first; audio, graphics, controls, accessibility, help, and leave are clearly separated.
-- **Results:** outcome headline, score breakdown, progress, achievements, comparison, replay/retry, and next recommended action.
-- **Help:** visual rule cards generated from current control mappings and representative legal states.
-- Daily challenge, local practice, pause, resume, results, and progression are first-class screens.
+Layouts follow the window's logical size: **wide** (≥ 1024 px) puts the actions at the bottom right (left with left-handed controls); **portrait phones** (≤ 700 px wide, portrait) get a full-width thumb tray of four equal actions; **short landscape** (≤ 480 px tall) moves the status into a narrow rail at the left and the actions into a column at the right. Panels are at most 560 px wide (640 for setup and help), scroll when taller than the window and keep 44 px touch targets.
 
 ### Input
 
-- Pointer/touch: raycast only against explicit interaction layers; use pointer capture for drags; cancel safely on lost capture.
-- Touch: distinguish tap, drag, and camera gesture by distance/time thresholds; never require multi-touch for core play.
-- Keyboard: directional navigation among legal targets, confirm, cancel, pause, undo/hint where valid, and camera reset.
-- Gamepad: focus navigation, primary/secondary actions, pause, and remappable axes/buttons.
-- Prevent accidental double commits with action identifiers, not arbitrary long debounce timers. Provide visible drag origin, target preview, and invalid-action explanation.
+| Action | Keyboard (default) | Gamepad | Pointer / touch |
+|---|---|---|---|
+| Move focus among free tiles | Arrow keys | D-pad, left stick | — |
+| Select the focused tile | Enter, Space, Numpad Enter | A | tap / click a tile |
+| Pause / resume | Escape | Start, B | pause button |
+| Hint | H | Y | Hint |
+| Shuffle | S | X | Shuffle |
+| Undo | U | Select / Back | Undo |
+| Reset camera | C | right stick press | Camera |
+
+Keys and pads are rebound in the runtime's Options (Change controls opens them). A short still press (under 0.6 s, under 12 px of movement) picks the tile under it; a drag orbits the camera around the board (not with reduced motion), and Camera resets it. Arrow keys move a focus ring (with the tile's name) between free tiles by the browser build's directional search; Enter taps the focused tile unless a button has focus. Menus are fully keyboard, pad and screen-reader navigable; on touch-first devices no control is pre-focused.
 
 ### Accessibility
 
-- Full keyboard operation and visible focus; DOM equivalents for canvas controls; headings and live regions for objective, turn, score, errors, and results.
-- Color is reinforced by shape, texture, icon, or label. Include contrast-safe and common color-vision palettes.
-- Reduced-motion mode removes camera swoops, shake, parallax, rapid particles, and large scaling while preserving event timing.
-- Independent sliders for music, effects, ambience, and voice; captions/text cues for meaningful audio; no audio-only gameplay.
-- Options for larger text, high contrast, left-handed controls, hold-versus-toggle, timing assistance, haptics off, and tutorial replay.
-- Announce Three.js board state through a concise navigable model rather than describing every decorative object.
+Every live tile is an accessibility target named like the browser build's board mirror ("moon 3, layer 1, free", "… blocked", "…, selected"); round events are announced (round start, removed pairs with the streak, errors, results). Text size, high contrast (the UI's high-contrast palette), reduced motion (no title orbit, fireflies, lantern flicker, sparks, marker pulse or drag orbit) and vibration are the runtime's options. Colour is never the only cue: each face has a glyph and a family band, and the colour-vision palettes recolour the bands.
 
 ## 4. Visual and audio design
 
-### Visual contract
+The scene is the browser build's three.js r185 garden on `starhermit:scene`: a night sky and fog per theme, the moon as a directional key light with a board-fitted shadow, ambient and hemisphere fill, a gravel ground, a round stone table (carved rim and pedestal when detailed), fourteen garden rocks, three paper lanterns with flickering warm point lights, a bright moon disc with a halo, a star field, drifting fireflies and the ceramic tiles. Punctual lights are the r185 intensities ÷ π (the engine's light units); the room environment is `new RoomEnvironment(renderer)` lowered by 3.5 (r183+), at environment intensity 0.28. Tile faces are canvas textures drawn as the browser build drew them (glaze, edge, family band, glyph, two-tone side); the colour moon emoji, 〰 and ☔ come from `assets/glyphs.png` (baked from Chrome by `tools/bake-glyphs.mjs`) because the engine's canvas text leaves them out.
 
-The subject is the active playfield at near-tabletop to room scale, framed so state changes occupy most of the screen. The scene is a moonlit garden table with ceramic tiles. Use an authored camera, original procedural geometry, restrained environmental storytelling, and a deterministic visual seed. The no-post-processing baseline must still communicate hierarchy, depth, selection, and state.
+Graphics follow the runtime's quality level (`native/quality.ts`, the browser build's presets): Low — Lambert shading, plain boxes, no shadows or post effects; Balanced — Standard shading, rounded tiles, textured stone, stars, 1024 shadows, bloom, grade, FXAA, reflections, sparks, fireflies; High — clear-coated Physical tiles, 2048 shadows, ambient occlusion, SMAA; Ultra — 512-px faces, 4096 shadows, high ambient occlusion, MSAA. Spark and firefly counts grow with the level within a tier. Render scale, adaptive resolution and the frame-rate limit are the runtime's. Ultra faces are drawn a few per frame (the engine's canvas-work and upload bounds), and the game raises its image budget to 192 MiB for a Grand board at Ultra.
 
-### Three.js scene design
-
-- Use physically based lighting and color management with one dominant key, soft environment fill, and contact grounding. Gameplay colors are tested after tone mapping.
-- Build reusable semantic meshes for active pieces, board cells, obstacles, targets, and environment modules. Geometry detail follows silhouette importance and camera distance.
-- Use instancing for repeated pieces and props, pooled effects, texture atlases where appropriate, and explicit disposal on scene changes.
-- Separate render layers for environment, gameplay, selection/ghosts, effects, and UI anchors. Cosmetic particles never intercept raycasts.
-- Selection uses a combination of lift/pose, outline or rim, and grounded marker—not bloom alone. Legal targets preview before commit; invalid targets explain why.
-- Event hierarchy: input acknowledgment < legal move < combo/goal < round completion. Reserve camera motion, strong emission, and dense particles for the highest tier.
-- Audio uses original short transients tied to logical events, layered material impacts, quiet ambience, and adaptive music stems. Randomized pitch/variant is seeded for replay consistency where recording matters.
-
-### Camera and motion
-
-- Choose orthographic or low-distortion perspective according to depth requirements; expose framing constants rather than magic offsets.
-- Camera transitions use authored duration/easing or critically damped springs and remain interruptible. Never animate by cumulative per-frame lerp.
-- Decorative motion is paused or reduced when hidden. Gameplay animation derives from simulation state and interpolation alpha, not frame count.
-- Camera shake is low-amplitude, event-tiered, disabled by reduced motion, and never changes raycast truth.
-
-### Graphics-skill routing
-
-During implementation, begin with `threejs-skill-router` and load only the following retained skills because they materially affect this visual target:
-
-- `threejs-camera-direction` for deliberate framing and input-safe camera transitions
-- `threejs-procedural-geometry` for authored, inspectable meshes instead of primitive-only placeholders
-- `threejs-procedural-materials` for coherent PBR surfaces, perceptual parameters, and readable state masks
-- `threejs-procedural-animation` for deterministic motion phases, springs, and interruption-safe transitions
-- `threejs-procedural-vfx` for bounded particles, trails, impact accents, and event hierarchy
-- `threejs-exposure-color-grading` for tone mapping, adaptation limits, and accessible color separation
-- `threejs-image-pipeline` for explicit depth/color ownership and pass ordering
-- `threejs-visual-validation` for fixed-view captures, seed sweeps, and performance evidence
-
-Follow the skill pack's acceptance gate: deterministic seeds, debug views for controlling fields, perceptually grouped parameters, mechanism-backed quality tiers, and a readable no-post baseline. Do not add an effect merely because a skill exists.
-
-### Graphics
-
-**Graphics.** The table is lit by a cool moon key light (PCF shadows whose frustum is fitted to the current board, or to the table on the title screen), a hemisphere sky/ground fill and a low ambient term, with ACES filmic tone mapping and sRGB output; the background is `scene.background` so post-processing never washes it out. At Detailed, tiles are rounded ceramic (clear-coated on High/Ultra) with a glazed, speckled face and a two-tone side (ivory over a theme-coloured backing); the table is textured stone with a carved rim and pedestal, the ground is gravel, rocks are faceted, lanterns are paper lanterns with caps, and the sky has a star field and a haloed moon. Plain keeps box tiles, flat materials and the original props. Reflections use a `RoomEnvironment` PMREM as `scene.environment` at low intensity. Post-processing (EffectComposer) is RenderPass → GTAO → UnrealBloom (threshold 0.92, so only the moon, lanterns, fireflies and match sparks glow) → colour grade with vignette → OutputPass → SMAA/FXAA; MSAA uses a multisampled composer target so it can change live. Selection is lift + marker ring + a soft accent glow, never bloom alone; glyph contrast is never reduced. Ambient motion — drifting fireflies, lantern flicker and a slow camera orbit around the table (with a small decorative tile stack) behind the title menu — stops under reduced motion. The Pause/Settings panel (also reachable from the title's **Settings** button, where it shows Back instead of Resume/Leave round) has a **Graphics** section: Quality (Auto, chosen from the StarHermit hardware level below; Low; Balanced; High; Ultra), Render scale 50–200%, one select per category — Shadows (off/low/medium/high), Ambient occlusion (off/on/high), Bloom, Color grade, Anti-aliasing (off/FXAA/SMAA/MSAA), Reflections, Detail (plain/detailed), Match particles (off/low/high), Ambient motion (static/animated) — each defaulting to "From preset (…)", Adaptive resolution (averages 90 frames; steps the scale down 0.1 to 60% above 26 ms, back up 0.05 below 14 ms) and Show frame rate (a bottom-left readout that never covers controls), a summary line (GPU · Level N · cost · W×H px, "Level" localized), the Theme select, and a note when post-processing is unavailable (the game then renders without it). Pixel ratio is min(device ratio, preset cap — Low 1, Balanced 1.5, High/Ultra 2) × preset scale (Ultra 1.25) × render scale × adaptive scale. Low renders directly with no shadows, post-processing or particles, as cheaply as the original renderer. Choosing a preset clears overrides; changes apply immediately and persist in the `gfx` object of the settings store (`qm:settings:v1`, cloud-saved with the rest). The body carries `data-gfx-preset` and `data-gfx-<category>` attributes. Panel strings follow the game language (see Localization).
-
-**Hardware-level detection.** `js/gpu-level.js` (shared StarHermit copy, `window.StarHermitGpu`, a classic script loaded before `js/main.js`, never edited here) rates the WebGL unmasked renderer plus device facts (`detectSystem()`: phone/tablet, cores, memory, screen) on the StarHermit hardware level 0–20 (0 = Galaxy S20 / Intel UHD or weaker, every software renderer and no WebGL; 20 = RTX 5090; each level ≈ 1.23×; laptop parts two levels below desktop; phones, tablets and ≤ 4 GB machines capped at 9). `js/gfx.js` maps it with `presetForLevel(level, { low: 0, balanced: 4, high: 10, ultra: 17 })`, so Auto picks Ultra on strong GPUs; adaptive resolution still steps down when slow. Headless SwiftShader is level 0 → Low. Phones and tablets pace Auto FPS at half the display refresh rate ("Auto (half refresh rate)") and start at 16 simultaneous sounds (shared `game-options.js`).
-
-**Per-preset budgets** (`BUDGETS` / `budgetFor` in `js/gfx.js`). Each preset holds 60 FPS on the weakest GPU Auto gives it — Low at level 0, Balanced 4, High 10, Ultra 17. Tiles, layout, picking, tap targets and rules are identical on every preset; only visuals change. Spark and firefly counts are tuned at the floor level and scale up within the preset on faster GPUs (`StarHermitGpu.scaleBudget`, ≤ 2×, at most 200 sparks per burst / 128 fireflies). A budget change rebuilds the scene in place (as a theme change does).
-
-| Budget | Low | Balanced | High | Ultra |
-|---|---|---|---|---|
-| Tile shading | Lambert | Standard | clear-coated Physical (Detail on) | as High |
-| Garden shading (table, ground, rocks, lanterns) | Lambert | Standard | Standard | Standard |
-| Tile face texture (height 400/256 of it) | 128 px | 256 px | 256 px | 512 px |
-| Rounded-tile bevel segments (Detail on) | 1 | 2 | 3 | 4 |
-| Table stone texture (gravel ½; Detail on) | 256 px | 256 px | 512 px | 1024 px |
-| Sparks per match at Particles high (low: 3/7) | 40 | 50 | 70 | 100 |
-| Fireflies (Ambient motion animated) | 24 | 32 | 42 | 64 |
-| Sky stars (Detail on) | 180 | 260 | 360 | 600 |
-| Bloom / GTAO resolution | ½ | ½ | ½ | full |
-
-**Benchmark** (`node tools/gfx-bench.mjs quiet-mahjong`; hook `tests/gfx-bench.mjs` picks the preset in Settings → Graphics, starts a Practice round on the Grand layout (108 tiles) and keeps clearing matching free pairs by clicking the board's tile buttons, shuffling when stuck). Measured 2026-10-18 (GPU ms above the draws-skipped floor, projected to the preset's floor level; CPU p90 on the RTX 5090 run):
-
-- Desktop 1920×1080: PASS low (typical 0.00 / slow 0.99 ms GPU, CPU 1.60 ms); PASS balanced (5.32 / 7.59, CPU 3.50); PASS high (4.30 / 5.14, CPU 4.10); PASS ultra (4.95 / 5.00, CPU 3.20).
-- Mobile 390×844 at DPR 3 (`--mobile --presets low,balanced`): PASS low (0.00 / 0.00, CPU 2.30); PASS balanced (0.00 / 3.98, CPU 3.30).
-
-Graphics files: `js/gpu-level.js` (shared hardware-level module), `js/gfx.js` (pure quality model: presets, categories, hardware-level detection `detectLevel`/`presetForLevel`/`detectPreset`, per-preset `BUDGETS`/`budgetFor`/`burstSize`, `resolve`, `choosePreset`, `setOverride`, `presetTier`, `describe`), `js/gfx-i18n.js` (panel strings), `js/addons/` (three.js 0.185.1 addons matching the vendored `js/three.*.min.js`, mapped by the import map in `index.html`), `tests/gfx.test.mjs` (unit tests, part of `npm test`: hardware level → preset — SwiftShader/llvmpipe/no WebGL, AMD Radeon Graphics and Intel UHD → Low, Iris Xe → Balanced, GTX 1070 → High, RTX 4080/5090 → Ultra, phones such as Adreno 740 capped at Balanced — and the per-preset budget table), `tests/gfx-bench.mjs` (real-GPU benchmark hook, never run in CI); the e2e suite drives the Graphics panel at desktop and mobile sizes and checks "Level 0" in the summary.
-
-### Performance budgets
-
-- Target 60 fps at the default tier and a stable 30 fps fallback on constrained mobile hardware.
-- Default active gameplay: ≤150 draw calls desktop, ≤90 mobile; ≤350k visible triangles desktop, ≤140k mobile; transient particles ≤20k desktop and ≤5k mobile.
-- Cap device pixel ratio by quality tier; dynamically lower render scale before dropping simulation rate. UI text remains native resolution.
-- Avoid runtime shader compilation during active play by prewarming required variants. Avoid per-frame allocations in simulation/render loops.
-- Quality tiers independently control shadows, environment detail, particles, post effects, antialiasing, and render scale; they never alter rules or visibility of hazards.
+Sound: the authored one-shots in `sfx/` per event (select, deselect, remove, invalid, hint, shuffle, undo, won, lost, pause) on the effects bus, a quiet noise ambience loop and a slow pentatonic pad on the music bus (rendered into clips at start). Volumes, mute and the voice limit are the runtime's.
 
 ## 5. Technical architecture
 
-### Client modules
+- `js/rules.js` — the deterministic rules (seeded streams, layouts, the always-solvable deal, free tiles, legal pairs, commands, scoring, terminal states, replay); `js/content.js` — themes, lessons, Journey, challenges, achievements, the Daily's ruleset. Both unchanged from the browser build and shared with `server.js` and the node tests.
+- `js/progress.js` — the progress document, its two-device merge, the game's options, reading the browser build's cloud save, the device store.
+- `js/strings.js` + `js/i18n.js` — the nine locales (classic scripts loaded with `loadClassic`); `js/sh-strings.js` — the account strings.
+- `native/main.ts` — the flow, the session (every mutation through `rules.apply`, the command log, snapshots), input, progression; `native/screens.ts` — the UI; `native/render.ts` — the garden; `native/platform.ts` — saves, options, leaderboards; `native/audio.ts`, `native/quality.ts`, `native/style.ts` (the UI styles from `tools/ui-style.css`, converted to `assets/ui-style.json` by `npm run css`).
 
-- `bootstrap`: host handshake, capability detection, asset manifest, lifecycle.
-- `rules`: pure deterministic state transitions, legality, scoring, seeded random stream.
-- `session`: local or hosted commands, snapshots, prediction policy, reconnect, replay.
-- `render`: Three.js scene graph, semantic entity views, camera, lighting, VFX, quality.
-- `ui`: responsive DOM shell, focus, localization, settings, overlays, accessibility mirror (game strings in `js/strings.js`, runtime `js/i18n.js`, module access `js/lang.js`; Graphics/account strings in `js/gfx-i18n.js`).
-- `audio`: buses, event mapping, focus/background behavior, decode and memory policy.
-- `content`: versioned levels, themes, tutorials, validation metadata.
-- `platform`: token-aware REST/WebSocket adapter, retries, rate-limit handling, telemetry consent.
-
-No module may mutate rules state except through a validated command. Rendering consumes immutable snapshots plus interpolation data. UI state and simulation state are separate so closing a drawer cannot affect a match.
-
-### Determinism, replay, and security
-
-- Fixed simulation step where physics exists; quantize authoritative inputs and define stable collision/order rules.
-- Use separate seeded random streams for rules, content decoration, and audiovisual variants. Cosmetic randomness never changes rules.
-- Replay envelope: schema version, build/content version, seed, initial hash, timestamp offset, ordered commands, periodic state hashes, terminal result.
-- Validate all network input for identity, session membership, turn/tick, bounds, rate, payload size, and legal action. Reject duplicates idempotently by command ID.
-- Treat client clocks, scores, inventories, roles, physics outcomes, and completion claims as untrusted in competitive contexts.
-
-### Loading and resilience
-
-- Show useful progress by asset group; load core rules/UI first and scenic assets lazily. Provide procedural low-detail substitutes if optional assets fail.
-- Cache immutable hashed assets and the last safe local snapshot. Updates activate between rounds, never during one.
-- Recover WebGL context by rebuilding GPU resources from retained CPU descriptors. If 3D is unavailable, present a clear compatibility message and preserve account/session state.
-- Background tabs reduce rendering to zero or a low heartbeat while preserving required network lifecycle.
+Time runs on the runtime's fixed steps at 60 Hz: an active round's clock sends the rules a 1000 ms tick every 60 steps, so pauses and slow frames never cost time. A hidden window pauses a solo round; the Daily's clock keeps running and the time away is added on return ("While you were away"). After every command the round's config and command log are stored on the device (`qm:save:v1`); the title offers Resume round, which replays the log.
 
 ## 6. StarHermit integration
 
-### Packaging and launch
-- Ship a browser distribution with `starhermit.txt` at its root, `name=Quiet Mahjong`, and `launch=index.html`. Keep source files, secrets, design documents, and source maps outside the uploaded distribution.
-- Platform access goes through the canonical StarHermit SDK (`starhermit-sdk.js`, an unedited copy of `tools/starhermit-sdk.js`, loaded before the game modules) via the adapter in `js/platform.js`. `StarHermit.init()` runs first at boot: it reads the launch token from `#game_token=` (library) or `#access_token=` (sign-in return), strips it from the URL, takes the slug from the `game_scope` claim, and renews the token on its own schedule. When renewal is refused the game drops to local play and offers sign-in again.
-- On `*.starhermit.com` without a token the title shows **Sign in with StarHermit** (`StarHermit.signIn()`); it is hidden when signed in and when running locally.
-- The daily uses the deterministic shared UTC-day seed and the device clock, hosted or not. Without a launch token the game makes no network request at all (no platform calls, no own-server `/api` or `/ws` calls).
+- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.19.3`, `engine.minor=20`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
+- **Saves:** progress is the game's save (`saves`, device and account); two devices' copies merge (better stage and daily results, larger counters, earliest achievement times, the union of friends). The browser build's cloud save (`game:<slug>`) is read once as a foreign save: its progress merges in, its game options are adopted, and it is replaced.
+- **Settings:** the game's options (captions, theme, palette, left-handed, tutorial flag) are engine settings kept with the account; the browser build's settings KV values are adopted once and all its keys removed.
+- **Device store:** the interrupted round and the local leaderboard keep the browser build's localStorage keys (`qm:save:v1`, `qm:board:v1`); browser guests' old localStorage progress does not migrate (the engine's storage is separate).
+- **Leaderboards:** signed in, a finished Journey, Daily or Challenge round (not Learn or Practice, not a resigned round) posts its total to the `high-score` board through `score-script.js` (server-authoritative range check), and the results show the rank. Score chase reads the platform board (everyone's or friends') when signed in; the Daily tab and guests use the local records. Every won round is also a local record.
+- **Identity:** the account's display name when signed in (guests set a local name in Profile), the invite link (copied to the clipboard), sign-in on request, and a notice when signed out.
+- **Daily:** the date comes from `serverNow()` (the device's UTC clock offline).
+- **Localization:** every string in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT, following the runtime's interface language live.
 
-### Identity, profile, presence, and preferences
-- The display name comes from `StarHermit.profile()` (nickname, "Player <id>" fallback) and is shown read-only in the profile name slot and title status; the free-text local name remains for offline play. No presence heartbeats are sent.
-- Player preferences (audio levels, captions, graphics, theme, accessibility, left-handed layout, haptics, palette, tutorial completion) mirror to the per-game settings KV with `patchSettings` (diff only, debounced) and are applied from `getSettings()` at start; the platform value wins over local defaults.
-- Keyboard actions are declared as `control.*` lines in `starhermit.txt` and loaded with `StarHermit.loadBindings()`; keydown is routed by `event.code`. The settings panel and How to play list the effective bindings. Touch and gamepad remain the game's own.
-- Progress (and a settings copy) is cloud-saved as one JSON document in the `game:<slug>` slot: `loadJSON()` at start (an empty slot is seeded from the local copy), `saveJSON()` debounced ~2 s at every progress/settings checkpoint, `flushSave(true)` on `pagehide`/hide, with a visible synced/saving/error status. localStorage remains the offline cache.
-- The loaded cloud progress is merged with this device's (`mergeProgress` in `js/platform.js`): larger stat counters and best score, the better result per journey stage and per daily date (higher score, then faster time), the union of achievements (earliest unlock time) and friends; the local name wins. Preferences come from the settings KV; only the one-way tutorial flag is taken from the cloud copy. When the device added anything, the merge is saved back.
-- Writes after that load are conditional (ETag). When another device saved first, the SDK refuses the write and emits `saveconflict`; the game reloads the cloud copy, merges it the same way (the round in progress lives in its own local snapshot and is untouched) and saves the merge.
-- Settings → **Report a problem** (signed in only; rendered by the shared `game-options.js`) files a bug report through `StarHermit.reportBug` with a small non-personal `context.json` (viewport, language, FPS cap, audio limit). Uncaught errors are filed as crash reports through `StarHermit.captureCrashes` (SDK-capped).
+## 7. Known limitations
 
-### Localization
-- Every player-facing string ships in nine locales: en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT — menus, setup facts, HUD, toasts, captions, the accessible tile mirror (face family names and aria labels), results, help, profile, leaderboards, and all content (lessons, the 40 stage names, challenges, achievements, themes, layout sizes, score rows). English source strings are the keys (`js/strings.js`; en-GB, es-ES and fr-CA list only their differences from en-US, es-419 and fr-FR). "Quiet Mahjong" stays as is; numbers are locale-independent.
-- The Pause/Settings sheet (reachable from the title's **Settings** and during play) holds its groups in one `data-options-graphics` container; the shared `game-options.js` mounts Frame rate, **Language → Game language**, Sound and Report a problem at its end. Language offers **Automatic — <resolved language>** plus the nine locales by native name, with a status line (Saved to account / Saved on this device / Account sync unavailable).
-- Resolution (`sh-language.js`): explicit game choice → for Automatic, the StarHermit account's `preferredLanguage` (`GET /api/v1/me/language`, signed in only) → `navigator.languages` → en-US. The choice (`auto` or a locale) is stored per player in localStorage and, signed in, in the per-player settings key `ui.language` as `{ choice }`; the game's settings mirror only syncs its own preference keys, never `ui.*`. `?lang=<tag>` forces a locale for the page load (QA links) and hides the selector.
-- A change applies immediately without ending the round: `<html lang>`, static markup and aria-labels are re-applied (`js/i18n.js`), `qm-language` fires, and the Graphics labels, key list, title status, open setup screen, HUD, tile mirror, results (with the leaderboard line), profile and scores re-render in place. On portrait phones the action bar's labels shrink to fit long translations.
+- Pre-existing rules behaviour kept: the Long Garden (all 40 stages) and Seven Moons (7 dailies) achievements are checked before the round being finished is recorded, so the unlocking clear counts on the next win.
+- The browser build's per-effect graphics overrides, render-scale slider and frame-rate readout are the runtime's Options now (a level, not per-effect choices). The "Tap-to-select (hold mode off)" setting stored a value nothing read and is not offered; "Voice cues" had no voice sounds and is the runtime's voice limit. The 2D compatibility screen for browsers without WebGL is gone (the runtime always draws).
+- The procedural tones the browser build played while a sample was still decoding are not ported: until a clip loads, its event is silent.
+- The local-only analytics log (`qm:analytics:v1`) is not ported.
+- Signed-in paths (cloud merge, foreign-save migration, legacy settings, score posting, platform boards) cannot be driven live in the checks; their logic is covered by `tests/progress.test.mjs`.
 
-### Discovery, activity, and social layer
-- Launch activity is not reported: the platform has no per-game activity route reachable by launch tokens, and standalone play makes no own-server calls. Surface entitlement or catalog state only in host-owned chrome; the game itself must remain playable without promotional interruption.
-- When signed in, the title shows **Invite a friend**, which copies `StarHermit.inviteLink()` to the clipboard with a confirmation toast. The friends board tab provides score comparison; there is no in-game friends picker because the game has no multiplayer sessions to invite into.
-- Do not create gameplay chat or voice surfaces for the initial release; they are not relevant to the core solo loop. Friends-only leaderboard filtering and shareable challenge seeds supply the social layer without unnecessary communication permissions.
-
-### Achievements and leaderboards
-- Declare a small static achievement set: first completion, mechanic mastery, a sustained streak, a difficult content milestone, and an accessibility-neutral long-term goal. Keys are stable, lowercase identifiers; unlocks are idempotent.
-- Provide global and friends-filtered boards for the primary metric plus a fair daily/weekly board. Include ruleset, content version, seed, assists, and duration with every submission; reject impossible or stale-version scores.
-- On the platform, every finished Journey, Daily or Challenge round (not Learn or Practice, not a resigned round) posts its total through `StarHermit.submitScores` (`platform.submitScore`): a practice session whose platform script `score-script.js` range-checks it and posts it to the `high-score` board (integer, higher is better, 0–1,000,000). The results screen's `#results-lb` line shows "Leaderboard rank: #N" (or posted / not posted), localized in the nine locales with the other platform strings (`js/gfx-i18n.js`). The Scores screen reads the board id from `StarHermit.getGame()` (or the first of `leaderboards()`) and entries via `leaderboardEntries()` (friends tab: `scope=friends`), resolving names through profiles. Daily and personal-best records also stay local (cloud-saved) and are labelled as such.
-- Standalone, scores are local records (casual board); the client submits nothing and shows no leaderboard line.
-
-### Sessions and transport
-- The initial game is solo. The shipped server.js is a plain Node development backend (not a Jint game script); the client does not call it. The platform script is `score-script.js` (canonical copy in the games repo's `tools/score-script.js`), which only accepts leaderboard results; achievements stay local (part of the cloud-saved progress doc).
-- A daily session records content version, seed, settings affecting difficulty, an ordered input log, score components, and final checksum. Reconnect from the durable session snapshot rather than trusting cached client state.
-- Realtime rooms, peer relay, matchmaking, backfill, and voice are intentionally not used because they add no value to this ruleset.
-
-### Publishing and operations
-- Keep the development/standalone server (`server.js`) inside the distribution; it serves static files for local play and tests only. `starhermit.txt` declares `server=score-script.js`, the platform script that posts leaderboard results. Choose a digest-pinned container only if profiling proves the sandbox unsuitable; no initial design here requires one.
-- Define control defaults, achievement metadata, and versioned settings before release. Publish immutable build assets, verify the launch path, maintain migration tests for saves, and expose no secret configuration to the client.
-- Capture anonymous funnel events only for start, tutorial step, round end, retry, settings change, and error category. Avoid raw text, precise personal data, and cross-title tracking.
-
-## 7. Content, economy, and retention
+## 8. Content, economy, and retention
 
 - Launch scope: tutorial sequence, at least 40 authored stages or equivalent procedural depth, daily challenge, practice, five visual themes, and a mastery track.
 - Cosmetic rewards may alter materials, trails, board surrounds, ambience, or profile flourishes, but never hitboxes, timing windows, information, or power.
@@ -261,50 +142,18 @@ No module may mutate rules state except through a validated command. Rendering c
 - No real-money wagering, paid random rewards, forced advertising, energy pressure, punitive streak loss, or purchases that affect competitive outcomes.
 - Notifications, if ever added by the host, are opt-in, frequency-capped, quiet-hour aware, and never use false urgency.
 
-## 8. Analytics and privacy
+## 9. Analytics and privacy
 
-Measure tutorial completion, first meaningful action time, session duration bands, level attempts, quit state, input modality, performance tier, reconnect success, and accessibility feature usage only in aggregate. Use random session identifiers, short retention, and explicit consent where required. Never collect message content, drawings, voice, private board notes, or exact pointer trails as analytics.
+The game records no analytics (the browser build's local-only funnel log was not ported). Any future measurement covers tutorial completion, first meaningful action time, session duration bands, level attempts, quit state, input modality, performance tier, reconnect success, and accessibility feature usage only in aggregate. Use random session identifiers, short retention, and explicit consent where required. Never collect message content, drawings, voice, private board notes, or exact pointer trails as analytics.
 
 Success targets for the first public test: median first-play time under 20 seconds, tutorial completion above 80%, crash-free sessions above 99.5%, p95 input acknowledgment below 100 ms locally, and at least 95% of supported mobile sessions holding their selected frame-rate tier.
 
-## 9. Testing and acceptance criteria
+## 10. Checks
 
-### Rules and content
+`npm test` runs:
 
-- Unit-test every legal action, invalid-action reason, scoring component, terminal state, and serialization migration.
-- Property-test deterministic replay: the same version, seed, and commands produce identical state hashes.
-- Fuzz malformed commands and generated content; prove no hangs, NaN physics, impossible mandatory states, or unbounded loops.
-- Golden-test representative easy, medium, hard, interrupted, resumed, and terminal sessions.
+- `tests/rules.test.mjs` — legality, invalid-action reasons, scoring, terminal states, serialization, replay, fuzzed commands, golden sessions; `tools/validate-content.mjs` — every lesson, stage, challenge and a sweep of daily seeds solvable without soft locks.
+- `tests/progress.test.mjs` — the progress merge, normalisation, the old cloud save, options and the device store; `tests/i18n.test.mjs` — every used key translated in all locales with placeholders intact, no unused rows, live switching, account strings.
+- `tests/native.mjs` — the web index is current, `tsc` (no skipLibCheck), `starhermit check .` with no warnings, and render-check play scripts that drive the real UI: `journey-1.play` (desktop by pointer: Journey, a hint, pause, help, the board cleared, results, Home), `lesson-keys.play` (Lesson 1 entirely by arrow keys and Enter), `sprint-phone.play` (phone portrait at DPR 3 by touch: Moon Sprint against its clock, profile, score chase), `journey-2-landscape.play` (phone landscape by touch: a shuffle, pause, the board cleared) and today's Daily (generated at test time). The scripts are generated from the rules' greedy solver by `tools/gen-plays.mjs` (`npm run plays`).
 
-### Interface and accessibility
-
-- Test pointer, coarse touch, keyboard-only, gamepad, screen reader, zoom to 200%, reduced motion, high contrast, safe areas, and both mobile orientations.
-- Verify focus restoration after every modal, meaningful live announcements, no keyboard traps, and no hover-only instructions.
-- Confirm all critical labels fit translated strings at 30% expansion and support right-to-left layout where localized.
-
-### Graphics and performance
-
-- Produce fixed-camera captures for every quality tier, deterministic seed sweeps, no-post baselines, debug-view mosaics, and 10-minute temporal stability runs.
-- Profile CPU, GPU, memory, shader compilation, draw calls, triangles, texture memory, and garbage collection on representative desktop and mobile classes.
-- Verify effects cannot obscure legal targets, alter picking, leak resources, or continue expensive updates while hidden.
-
-### Platform and network
-
-- Test expired/rotated tokens, privacy settings, rate limits, offline start, reconnect at each game state, duplicate commands, out-of-order events, server restart, and version mismatch.
-- Verify achievement idempotency, leaderboard validation, friends-only filtering, cloud-save conflict handling, activity start/end pairing, and server-time countdown accuracy.
-- For hosted sessions, test disconnect/rejoin, abandonment, timeout, invitation expiry, result reconciliation, replay access, moderation controls, and authoritative cheat attempts.
-
-## 10. Definition of done and non-goals
-
-This specification is ready for implementation when rules examples, content schema, wireframes for all responsive breakpoints, visual target frames, accessibility annotations, authoritative message schema, achievement definitions, leaderboard definitions, and performance test devices are approved.
-
-This document does **not** authorize implementation, asset production, monetization work, native wrappers, real-money systems, or copying any existing product. The initial build should favor one excellent core loop and a coherent original visual identity over feature breadth.
-
-## Browser interference
-
-`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
-
-
-## Sound and frame-rate options
-
-The options panel includes Sound controls for master, music, effects and UI volume, a mute that preserves volume levels, and an Auto or manual concurrent-sound limit (1–64). Changes apply immediately with perceptual volume curves. A shared allocator bounds Web Audio and media playback, including loops and scheduled sources. Graphics includes Auto display refresh or a custom maximum frame rate from 1–1000 FPS; rendering is paced independently of simulation and input. Preferences persist locally, with FPS stored per detected GPU, and reconcile with Starhermit settings when signed in. The controls support keyboard and touch input and the supported English, Spanish, German, French, Portuguese and Italian locales.
+`npm run test:browser` (`tools/browser-play.mjs`) plays the packaged web build in Chrome on the GPU (`~/games/tools/gpu-chrome.mjs`) at a desktop, a phone (DPR 3) and a phone held sideways, clearing boards through the accessibility targets, and fails on console errors or warnings.
