@@ -172,8 +172,11 @@ const animated = (): boolean => !!look?.animated && !reducedMotion;
 
 // ---------------------------------------------------------------------------- materials
 // Garden shading per the budget: Lambert on Low, Standard above (same colour and emission on every model).
+/** Copies Color objects so materials never share one (three copies; the engine keeps the object). */
+function own<T>(v: T): T { return v && typeof (v as { clone?: unknown }).clone === "function" ? (v as unknown as { clone(): T }).clone() : v; }
 type Surf = { color?: number | Color; roughness?: number; metalness?: number; emissive?: Color; emissiveIntensity?: number; flatShading?: boolean };
 function surface(p: Surf): MeshStandardMaterial | MeshLambertMaterial {
+  p = { ...p, color: own(p.color), emissive: own(p.emissive) };
   if (look?.budget.material !== "lambert") return new MeshStandardMaterial(p);
   const { roughness: _r, metalness: _m, ...base } = p;
   void _r; void _m;
