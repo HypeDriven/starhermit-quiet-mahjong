@@ -12,8 +12,8 @@
 // the match sparks and the drag orbit. Rendering reads rules snapshots and
 // never writes them.
 //
-// From three.js r185: punctual light intensities are ÷ π (the engine's
-// legacy light units); `new RoomEnvironment()` of r185 is the 900-candela
+// From three.js r185: punctual light intensities are the page's (minor 23+);
+// `new RoomEnvironment()` of r185 is the 900-candela
 // room lowered by 3.5, which the engine builds from `new
 // RoomEnvironment(renderer)` with `position.y = -3.5`; the post chain
 // (GTAOPass, UnrealBloomPass(0.55, 0.45, 0.92), the GradeShader before the
@@ -25,10 +25,10 @@ import {
   ACESFilmicToneMapping, AdditiveBlending, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color,
   CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, Mesh, MeshBasicMaterial,
   MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PerspectiveCamera, PMREMGenerator, PointLight, Points,
-  PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial,
+  PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, OrthographicCamera, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial,
   TorusGeometry, Vector2, Vector3, renderer, scene, type Material, type Object3D, type Texture,
 } from "starhermit:scene";
-import { OffscreenCanvas, createImageBitmap, type ImageBitmap } from "starhermit:canvas";
+import { OffscreenCanvas, fonts } from "starhermit:canvas";
 import { frame } from "starhermit:engine";
 import { C, R, type State, type Theme, type Tile } from "./game.ts";
 import { FIREFLY_MAX, PARTICLE_POOL, burstSize, type Look } from "./quality.ts";
@@ -125,11 +125,10 @@ function noiseTexture(base: number, seed: number, { size = 256, speck = 0.18, ve
   return tex;
 }
 
-// The face glyphs the engine's OffscreenCanvas fillText cannot draw (colour emoji, U+3030; reported), baked from Chrome
-// by tools/bake-glyphs.mjs into assets/glyphs.png (360 px cells, this order); faces redraw once it has loaded.
-const GLYPHS = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘", "🌝", "〰", "☔"];
-let glyphAtlas: ImageBitmap | null = null;
-createImageBitmap("assets/glyphs.png").then((b) => { glyphAtlas = b; if (built) rebuild(); }, (e: unknown) => console.warn(`glyphs: ${String(e)}`));
+// The colour moons, 〰 and ☔ come from the engine's emoji font, which loads on first use: faces are
+// redrawn once it is in (a canvas drawn before it arrives leaves them blank).
+const EMOJI = "🌑🌒🌓🌔🌕🌖🌗🌘🌝〰☔";
+fonts.load("144px serif", EMOJI).then(() => { if (built) rebuild(); }, (e: unknown) => console.warn(`emoji font: ${String(e)}`));
 
 // ---------------------------------------------------------------------------- state
 renderer.toneMapping = ACESFilmicToneMapping;
@@ -272,17 +271,10 @@ function faceTexture(face: string): Texture {
   const fam = face.split("-")[0]!;
   g.fillStyle = famColors[fam] ?? "#557";
   g.fillRect(20, 282, FW - 40, 32);
-  const glyph = R.faceGlyph(face);
-  const baked = GLYPHS.indexOf(glyph);
-  if (baked >= 0) {
-    // the colour moons and 〰, which the engine's canvas text leaves out: Chrome's drawing of them (tools/bake-glyphs.mjs)
-    if (glyphAtlas) g.drawImage(glyphAtlas, baked * 360, 0, 360, 360, FW / 2 - 90, 150 - 90, 180, 180);
-  } else {
-    g.fillStyle = "#1a2030";
-    g.font = "144px serif";
-    g.textAlign = "center"; g.textBaseline = "middle";
-    g.fillText(glyph, FW / 2, 150);
-  }
+  g.fillStyle = "#1a2030";
+  g.font = "144px serif";
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.fillText(R.faceGlyph(face), FW / 2, 150);
   // side band: ivory body over a coloured backing, like a two-layer tile
   const back = new Color(t.glow).lerp(new Color(t.table), 0.45);
   g.fillStyle = ceramic;
@@ -312,10 +304,10 @@ function environmentMap(): Texture | null {
 function fitShadow(radius: number): void {
   if (!moon) return;
   const r = Math.max(2, radius);
-  // the engine fits its orthographic shadow box to the view out to `distance` along the light
-  moon.shadow.distance = Math.max(20, r * 2 + 8);
-  moon.shadow.camera.near = 4;
-  moon.shadow.camera.far = 40;
+  const cam = moon.shadow.camera as OrthographicCamera;
+  cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
+  cam.near = 4; cam.far = 40;
+  cam.updateProjectionMatrix();
 }
 
 // ---------------------------------------------------------------------------- the garden
@@ -350,15 +342,15 @@ function buildEnvironment(): void {
   tileGeo = makeTileGeometry(det, g.budget.bevel);
 
   // key light: the moon, with a shadow fitted to the table / board
-  moon = new DirectionalLight(0xcfe0ff, (det ? 1.7 : 1.6) / PI);
+  moon = new DirectionalLight(0xcfe0ff, det ? 1.7 : 1.6);
   moon.position.set(-8, 14, 6);
   moon.shadow.bias = -0.0006;
-  moon.shadow.normalBias = 2; // texels here (three: 0.02 world units ≈ 2 texels of the fitted map)
+  moon.shadow.normalBias = 0.02;
   applyShadow();
   fitShadow(10);
   world.add(moon, moon.target);
-  world.add(new AmbientLight(t.glow, (det ? 0.18 : 0.25) / PI));
-  world.add(new HemisphereLight(t.accent, t.ground, (det ? 0.5 : 0.35) / PI));
+  world.add(new AmbientLight(t.glow, det ? 0.18 : 0.25));
+  world.add(new HemisphereLight(t.accent, t.ground, det ? 0.5 : 0.35));
 
   // ground
   const groundMat = surface({ color: t.ground, roughness: 1 });
@@ -442,7 +434,7 @@ function buildEnvironment(): void {
       lamp = new Mesh(new SphereGeometry(0.42, 16, 12), lampMat);
     }
     lamp.position.set(x, 2.2, z);
-    const light = new PointLight(t.glow, 2.5 / PI, 9);
+    const light = new PointLight(t.glow, 2.5, 9);
     light.position.set(x, 2.3, z);
     world.add(pole, lamp, light);
     lanterns.push({ lamp, light, base: lampMat.emissiveIntensity, phase: x * 1.7 + z });
