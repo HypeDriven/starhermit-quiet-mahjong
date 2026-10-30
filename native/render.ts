@@ -554,8 +554,9 @@ export function applyLook(next: Look): void {
   // main.js GradeShader (linear, before the output): S-curve 0.18, saturation 1.1, cool shadows / warm highlights over 0.15–0.7 luma,
   // the 0.26 vignette from 0.38 to 0.9 with the horizontal axis × 1.1
   renderer.grade = next.grade ? {
-    space: "linear", contrast: 0.18, saturation: 1.1, shadows: [0.95, 0.98, 1.06], highlights: [1.03, 1.0, 0.97], split: [0.15, 0.7],
+    space: "linear", contrastCurve: "s", contrast: 0.18, saturation: 1.1, shadows: [0.95, 0.98, 1.06], highlights: [1.03, 1.0, 0.97], split: [0.15, 0.7],
     vignette: { amount: 0.26, inner: 0.38, outer: 0.9, scale: [1.1, 1] },
+    overRange: "keep", // minor 29: mix(c, s + max(c - 1, 0), amount) as the page's grade
   } : null;
   renderer.antialias = next.antialias;
   const assetsChanged = !prev || prev.detailed !== next.detailed || prev.reflections !== next.reflections
