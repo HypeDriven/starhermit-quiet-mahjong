@@ -5,7 +5,7 @@
 **Genre:** Pair-removal puzzle
 **Players:** 1 player; asynchronous score comparison
 **Targets:** the StarHermit client (native) and browsers (the engine's web runtime), desktop and phones, landscape and portrait
-**Technology:** a StarHermit engine script game (engine 1.28.0, host API minor 30): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
+**Technology:** a StarHermit engine script game (engine 1.29.0, host API minor 31): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
 
 ## 1. Product vision
 
@@ -117,7 +117,7 @@ Time runs on the runtime's fixed steps at 60 Hz: an active round's clock sends t
 
 ## 6. StarHermit integration
 
-- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.28.0`, `engine.minor=30`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
+- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.29.0`, `engine.minor=31`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
 - **Saves:** progress is the game's save (`saves`, device and account); two devices' copies merge (better stage and daily results, larger counters, earliest achievement times, the union of friends). The browser build's cloud save (`game:<slug>`) is read once as a foreign save: its progress merges in, its game options are adopted, and it is replaced.
 - **Settings:** the game's options (captions, theme, palette, left-handed, tutorial flag) are engine settings kept with the account; the browser build's settings KV values are adopted once and all its keys removed.
 - **Device store:** the interrupted round and the local leaderboard keep the browser build's localStorage keys (`qm:save:v1`, `qm:board:v1`); browser guests' old localStorage progress does not migrate (the engine's storage is separate).
