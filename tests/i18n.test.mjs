@@ -2,18 +2,20 @@
 // translated in every locale (en-GB → en-US, es-ES → es-419, fr-CA → fr-FR
 // inherit), placeholders survive, the tables have no unused rows, content
 // (lessons, stages, challenges, achievements, themes, tiers, score rows) is
-// covered, the locale switches live, and the account strings cover the nine
-// locales.
+// covered, regional tables inherit, and the game's own controls-line names
+// cover the locales (account strings are the engine's starhermit.*).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { loadTables, codeKeys, audit, bootI18n, LOCALES } from './i18n-common.mjs';
-import { shStrings } from '../js/sh-strings.js';
+import { codeKeys, audit, FULL } from './i18n-common.mjs';
 import * as C from '../js/content.js';
 import * as R from '../js/rules.js';
 
 const ROOT = new URL('../', import.meta.url);
 const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
+const TABLES = JSON.parse(read('assets/strings.json'));
+/** The tables without the controls line's `sh.*` keys. */
+const gameTables = () => Object.fromEntries(Object.entries(TABLES).map(([l, t]) => [l, Object.fromEntries(Object.entries(t).filter(([k]) => !k.startsWith('sh.')))]));
 
 function contentKeys() {
   return [
@@ -37,25 +39,19 @@ function usedKeys() {
 test('every used key is translated in every locale; placeholders intact; no unused rows', () => {
   const used = usedKeys();
   assert.ok(used.length > 200, 'keys found: ' + used.length);
-  assert.deepEqual(audit(loadTables(ROOT, 'js/strings.js', 'QM_STRINGS'), used), []);
+  assert.deepEqual(audit(gameTables(), used), []);
 });
 
-test('the locale switches live, regional tables inherit', () => {
-  const { I18N } = bootI18n(ROOT, { strings: 'js/strings.js', i18n: 'js/i18n.js', global: 'QMI18N' });
-  assert.equal(I18N.lang, 'en-US');
-  assert.equal(I18N.setLocale('de-DE'), 'de-DE');
-  assert.equal(I18N.T('Paused'), 'Pausiert');
-  I18N.setLocale('fr-CA');
-  assert.equal(I18N.T('Score'), 'Pointage');
-  assert.equal(I18N.T('Paused'), 'En pause');
-  I18N.setLocale('en-GB');
-  assert.equal(I18N.T('Color palette'), 'Colour palette');
-  I18N.setLocale('it-IT');
-  assert.equal(I18N.T('{n} pairs', { n: 24 }), '24 coppie');
-  assert.equal(I18N.setLocale('xx-YY'), 'en-US');
+test('regional tables list differences; the full locales translate', () => {
+  assert.equal(TABLES['de-DE'].Paused, 'Pausiert');
+  assert.equal(TABLES['fr-CA'].Score, 'Pointage');
+  assert.equal(TABLES['fr-FR'].Paused, 'En pause');
+  assert.equal(TABLES['en-GB']['Color palette'], 'Colour palette');
+  assert.equal(TABLES['it-IT']['{n} pairs'], '{n} coppie');
 });
 
-test('account strings cover all nine locales', () => {
-  const keys = Object.keys(shStrings('en-US'));
-  for (const l of LOCALES) for (const k of keys) assert.ok(shStrings(l)[k], `${l} ${k}`);
+test('the controls line names cover the full locales', () => {
+  const keys = Object.keys(TABLES['en-US']).filter((k) => k.startsWith('sh.'));
+  assert.ok(keys.length >= 11, 'sh keys: ' + keys.length);
+  for (const l of FULL) for (const k of keys) assert.ok(TABLES[l][k], `${l} ${k}`);
 });

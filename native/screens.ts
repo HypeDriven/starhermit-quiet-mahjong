@@ -10,17 +10,17 @@
 // (≤ 700 px wide, portrait: a full-width thumb tray) and short landscape
 // (≤ 480 px tall: a narrow status rail at the left, the actions in a column
 // at the right).
-import { frame, openMenu } from "starhermit:engine";
+import { afterRender, frame, openMenu } from "starhermit:engine";
 import { bindingLabel, primaryPointer, requestRebind } from "starhermit:input";
 import * as draw from "starhermit:draw";
 import * as ui from "starhermit:ui";
 import { C, R, Store, type State } from "./game.ts";
-import { N, S, T } from "./i18n.ts";
+import { K, N, S, T } from "./i18n.ts";
 import * as platform from "./platform.ts";
 import * as render from "./render.ts";
 import { token } from "./style.ts";
 import {
-  app, copyInvite, displayName, fmtTime, hasSnapshot, hint, hudRects, inRound, later, leaderboardLine, leaveRound,
+  app, copyInvite, displayName, fmtTime, hasSnapshot, hint, hudRects, inRound, leaderboardLine, leaveRound,
   nextRecommendation, openMode, pauseRound, resetCamera, resultsSub, resumeRound, resumeSnapshot, retry, session, setGuestName,
   setupChallengeOne, setupJourneyStage, setupPractice, show, showProfile, showScores, shuffle, signIn, startLesson, startPending,
   tileLabel, undo,
@@ -29,11 +29,9 @@ import {
 // ------------------------------------------------------------------ layout and helpers
 interface Layout { lw: number; lh: number; sc: number; ox: number; oy: number; phone: boolean; short: boolean; wide: boolean }
 function layoutNow(): Layout {
-  const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
-  return { lw, lh, sc, ox: sa.left, oy: sa.top, phone: lw <= 700 && lh >= lw, short: lh <= 480 && lw > lh, wide: lw >= 1024 };
+  const v = ui.viewport!();
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height), sc = v.scale;
+  return { lw, lh, sc, ox: v.x * sc, oy: v.y * sc, phone: lw <= 700 && lh >= lw, short: lh <= 480 && lw > lh, wide: lw >= 1024 };
 }
 const fresh = (n = 0): boolean => frame().frame - app.openedFrame <= n;
 const tw = (text: string, style: string, kind?: "button" | "heading"): number =>
@@ -66,25 +64,14 @@ function button(b: Btn, width: number | null = null): boolean {
   }
   if (!firstId && !b.disabled) firstId = b.id;
   const hit = ui.style(cls, width != null ? { width } : {}).id(b.id).button(b.text, opts);
-  if (hit && !fresh(0)) later(b.act);
+  if (hit && !fresh(0)) afterRender(b.act);
   return hit;
 }
 /** Buttons at their own widths in rows that wrap at `width` (CSS flex-wrap), centred or start-aligned. */
 function flow(label: string, list: Btn[], width: number, gap = 8, center = false): void {
-  const rows: Btn[][] = [];
-  let used = 0, row: Btn[] = [];
-  for (const b of list) {
-    const bw = Math.min(width, btnW(b));
-    if (row.length && used + gap + bw > width) { rows.push(row); used = 0; row = []; }
-    used += (row.length ? gap : 0) + bw;
-    row.push(b);
-  }
-  if (row.length) rows.push(row);
-  ui.column(label, () => {
-    rows.forEach((r, ri) => ui.row(`${label}-r${ri}`, () => {
-      for (const b of r) button(b, btnW(b) > width ? width : null);
-    }, { spacing: gap, align: "center", ...(center ? { width, justify: "center" } : {}) }));
-  }, { spacing: gap, width });
+  ui.row(label, () => {
+    for (const b of list) button(b, btnW(b) > width ? width : null);
+  }, { wrap: true, width, gap, align: "center", ...(center ? { justify: "center" as const } : {}) });
 }
 /** A grid of `min`-wide cells (CSS repeat(auto-fit, minmax(min, 1fr))). */
 function cardGrid(id: string, w: number, min: number, n: number, cell: (i: number, cw: number) => void, gap = 10): void {
@@ -112,7 +99,7 @@ function card(id: string, title: string, sub: string, cw: number, act: () => voi
       }, { spacing: 4, width: inner });
     },
   });
-  if (hit && !fresh(0)) later(act);
+  if (hit && !fresh(0)) afterRender(act);
 }
 /** A check box with a wrapping label (the settings' <label><input type=checkbox> rows). */
 function checkRow(id: string, label: string, checked: boolean, w: number, toggle: () => void): void {
@@ -129,7 +116,7 @@ function checkRow(id: string, label: string, checked: boolean, w: number, toggle
       },
     });
     if (!firstId) firstId = id;
-    if (r.activated && !fresh(0)) later(toggle);
+    if (r.activated && !fresh(0)) afterRender(toggle);
     para(label, w - 34, "p");
   }, { width: w, spacing: 12, align: "center" });
 }
@@ -139,7 +126,7 @@ function selectRow(id: string, label: string, index: number, options: string[], 
     para(label, w - cw - 12, "p");
     ui.spacer();
     const i = ui.id(id).select(label, index, options, { width: cw } as ui.WidgetOptions);
-    if (i !== index && !fresh(0)) later(() => pickFn(i));
+    if (i !== index && !fresh(0)) afterRender(() => pickFn(i));
   }, { width: w, spacing: 12, align: "center" });
 }
 /** A binding as the browser build's keyLabel showed it (arrows as ↑ ↓ ← →, Escape as Esc). */
@@ -152,7 +139,7 @@ const keyText = (action: string): string => {
 /** The effective keyboard bindings (bindingsChanged: "Up ↑ · Down ↓ · …"). */
 function keysLine(): string {
   const order = ["up", "down", "left", "right", "select", "pause", "hint", "undo", "shuffle", "camera"];
-  return order.map((a) => `${S("act_" + a)} ${keyText(a)}`).join(" · ");
+  return order.map((a) => `${K("act_" + a)} ${keyText(a)}`).join(" · ");
 }
 
 // ------------------------------------------------------------------ the frame
@@ -162,7 +149,6 @@ export function drawScreens(): void {
   const s = app.screen;
   if (session.state && (s === "play" || s === "pause" || s === "results" || s === "help")) playView(L, s === "play");
   if (s !== "play") page(s, L);
-  appToast(L);
   if (app.focusNext) {
     const age = frame().frame - app.openedFrame;
     const target = app.focusNext === "first" ? (primaryPointer() === "coarse" ? null : firstId) : app.focusNext;
@@ -355,7 +341,7 @@ function pauseScreen(w: number): void {
   checkRow("set-left-handed", T("Left-handed controls"), o.leftHanded, w, () => platform.setOption("leftHanded", !o.leftHanded));
   const pals = Store.PALETTES;
   selectRow("set-palette", T("Color palette"), Math.max(0, pals.indexOf(o.palette)), pals.map((p) => T(PALETTE_NAMES[p]!)), w, (i) => platform.setOption("palette", pals[i]!));
-  para(`${S("keyboard")}: ${keysLine()}`, w, "kbd-line", "settings-keys");
+  para(`${K("keyboard")}: ${keysLine()}`, w, "kbd-line", "settings-keys");
   ui.row("rebind-row", () => { button({ id: "btn-rebind", cls: "btn", text: T("Change controls"), act: () => requestRebind() }); }, { width: w });
   heading("h3", T("Help"), w);
   flow("help-buttons", [
@@ -452,7 +438,7 @@ function profileScreen(w: number): void {
     para(T("Signed in with your StarHermit account; the name comes from your account profile."), w, "muted");
   } else {
     const next = ui.style("field").id("profile-name").textField("profile-name", app.nameDraft, { maxChars: 24, width: Math.min(w, 320), placeholder: T("Guest") });
-    if (next !== app.nameDraft) { app.nameDraft = next; later(() => setGuestName(next)); }
+    if (next !== app.nameDraft) { app.nameDraft = next; afterRender(() => setGuestName(next)); }
   }
   const sync = platform.syncState();
   const SYNC: Record<string, string> = {
@@ -501,7 +487,7 @@ function playView(L: Layout, live: boolean): void {
         draw.rect(r.x + r.width - bw, r.y, bw, r.height, ink);
       } }); },
     });
-    if (hit && !fresh(0)) later(pauseRound);
+    if (hit && !fresh(0)) afterRender(pauseRound);
   };
   if (L.short) {
     // landscape phone: a narrow status rail at the left
@@ -606,7 +592,7 @@ function actions(L: Layout, st: State, live: boolean): void {
     const hit = ui.style("action", width != null ? { width, minWidth: 0, padding: { start: 4, end: 4, top: 10, bottom: 10 } } as ui.Style : {}).id(b.id)
       .button(b.aria ?? b.text, { disabled: !live || !b.ok || st.status !== "active", ...(b.aria ? { content: () => { ui.style("action", { background: "#00000000", border: { width: 0 }, padding: 0, minWidth: 0, minHeight: 0 } as ui.Style).label(b.text); } } : {}) });
     // focus leaves the HUD button, so Enter / Space choose the focused tile again
-    if (hit && !fresh(0)) later(() => { b.act(); ui.setFocus(null); });
+    if (hit && !fresh(0)) afterRender(() => { b.act(); ui.setFocus(null); });
   };
   if (L.short) {
     const r = ui.place("hud-actions", { anchor: platform.options.leftHanded ? "start" : "end", x: pad, y: 0 }, () => {
@@ -631,14 +617,4 @@ function actions(L: Layout, st: State, live: boolean): void {
     ui.row("actions", () => { for (const b of items) one(b, null); }, { spacing: 8, align: "center" });
   });
   hudRects.push(r);
-}
-
-/** #app-toast: account notices on every screen. */
-function appToast(L: Layout): void {
-  const t = app.appToast;
-  if (!t) return;
-  const w = Math.min(616, L.lw - 32);
-  ui.place("app-toast", { anchor: "bottom", y: L.short ? 8 : 24 }, () => {
-    ui.style("toast").row("app-toast-box", () => { para(t.text, w - 30, "toast-text", "app-toast-text"); });
-  });
 }

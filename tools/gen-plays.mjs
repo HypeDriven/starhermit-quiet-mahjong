@@ -7,7 +7,7 @@
 // chosen with Enter. tests/native.mjs also calls dailyPlay() at test time:
 // the Daily's board depends on the UTC date.
 //   node tools/gen-plays.mjs
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import * as R from '../js/rules.js';
 import * as C from '../js/content.js';
 
@@ -219,5 +219,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   write('lesson-keys.play', 'Lesson 1 by the keyboard (tools/gen-plays.mjs; generated: do not edit): the mode cards, every pair reached with the\narrow keys and chosen with Enter, the results with the next lesson.', lessonKeys());
   write('sprint-phone.play', 'Moon Sprint (timed challenge) on a phone held upright, by touch (tools/gen-plays.mjs; generated: do not edit), then\nthe profile and Score chase.', sprintPhone());
   write('journey-2-landscape.play', 'Journey stage 2 on a phone held sideways, by touch (tools/gen-plays.mjs; generated: do not edit): a shuffle, the\npause sheet, the board cleared.', landscape());
+  // The graphics-level bench (tools/engine-tier-bench.mjs): Journey stage 1's board, six pairs removed (sparks) over about 600 frames.
+  const j1 = readFileSync(new URL('../tests/native/journey-1.play', import.meta.url), 'utf8').split('\n');
+  const pairs = j1.filter((l) => /^click =.*, layer \d+, free/.test(l)).slice(0, 12);
+  write('tier-bench.play', 'Graphics-level bench (tools/gen-plays.mjs; generated: do not edit): Journey stage 1, six pairs removed, about 600 frames measured.', [
+    'until 300 Quiet Mahjong', 'frames 60', 'click =Journey', 'until 60 Forty authored stages', 'frames 10', 'click 1. First Step', 'until 60 Journey stage.', 'frames 10',
+    'click =Start', 'until 120 Clear the board', 'frames 120', 'measure start', ...pairs.flatMap((c) => [c, 'frames 40']), 'frames 110', 'measure stop',
+  ]);
   console.log('wrote tests/native/*.play');
 }

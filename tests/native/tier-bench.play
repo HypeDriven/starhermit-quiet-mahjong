@@ -1,0 +1,39 @@
+# Graphics-level bench (tools/gen-plays.mjs; generated: do not edit): Journey stage 1, six pairs removed, about 600 frames measured.
+until 300 Quiet Mahjong
+frames 60
+click =Journey
+until 60 Forty authored stages
+frames 10
+click 1. First Step
+until 60 Journey stage.
+frames 10
+click =Start
+until 120 Clear the board
+frames 120
+measure start
+click =petal 4, layer 1, free #1
+frames 40
+click =petal 4, layer 1, free
+frames 40
+click =stone 8, layer 1, free #1
+frames 40
+click =stone 8, layer 1, free
+frames 40
+click =wind 4, layer 1, free #1
+frames 40
+click =wind 4, layer 1, free
+frames 40
+click =moon 4, layer 1, free #1
+frames 40
+click =moon 4, layer 1, free
+frames 40
+click =wave 6, layer 1, free #1
+frames 40
+click =wave 6, layer 1, free
+frames 40
+click =moon 2, layer 1, free #1
+frames 40
+click =moon 2, layer 1, free
+frames 40
+frames 110
+measure stop

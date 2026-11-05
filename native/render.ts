@@ -25,7 +25,7 @@ import {
   ACESFilmicToneMapping, AdditiveBlending, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color,
   CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, Mesh, MeshBasicMaterial,
   MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PerspectiveCamera, PMREMGenerator, PointLight, Points,
-  PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, OrthographicCamera, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial,
+  ParticleEmitter, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, OrthographicCamera, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial,
   TorusGeometry, Vector2, Vector3, renderer, scene, type Material, type Object3D, type Texture,
 } from "starhermit:scene";
 import { OffscreenCanvas, fonts } from "starhermit:canvas";
@@ -161,8 +161,7 @@ let marker: Mesh | null = null;
 let decor: Group | null = null;
 let fireflies: Points | null = null;
 let fireflySeeds: { x: number; z: number; y: number; p: number; s: number }[] = [];
-let particles: Points | null = null;
-let particleData: { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number }[] = [];
+let particles: ParticleEmitter | null = null;
 let lanterns: { lamp: Mesh; light: PointLight; base: number; phase: number }[] = [];
 let lastState: State | null = null;
 let built = false;
@@ -315,6 +314,8 @@ let worldGen = 0;
 function disposeWorld(): void {
   jobs.length = 0;
   worldGen++;
+  particles?.dispose(); // a group traverse does not free an emitter
+  particles = null;
   world.traverse((o: Object3D) => {
     const m = o as Mesh;
     if (m.geometry && m.geometry !== tileGeo && m.geometry !== ringGeo) m.geometry.dispose();
@@ -510,15 +511,15 @@ function buildEnvironment(): void {
   world.add(marker);
 
   // particle pool (bounded, cosmetic)
-  const pGeo = new BufferGeometry();
-  pGeo.setAttribute("position", new BufferAttribute(new Float32Array(PARTICLE_POOL * 3), 3));
-  particles = new Points(pGeo, new PointsMaterial({
-    color: new Color(t.accent).multiplyScalar(det ? 1.6 : 1), size: det ? 0.16 : 0.09,
-    map: det ? spriteTex : null, transparent: true, opacity: 0.9, depthWrite: false, blending: det ? AdditiveBlending : NormalBlending,
-  }));
+  particles = new ParticleEmitter({
+    capacity: PARTICLE_POOL, seed: 0x5a11, space: "local", life: 1 / 1.4,
+    velocity: [0, 2, 0], velocitySpread: [1.2, 1.2, 1.2], gravity: [0, -3, 0],
+    material: new PointsMaterial({
+      color: new Color(t.accent).multiplyScalar(det ? 1.6 : 1), size: det ? 0.16 : 0.09,
+      map: det ? spriteTex : null, transparent: true, opacity: 0.9, depthWrite: false, blending: det ? AdditiveBlending : NormalBlending,
+    }),
+  });
   particles.frustumCulled = false;
-  particleData = [];
-  pGeo.setDrawRange(0, 0);
   world.add(particles);
 }
 
@@ -545,12 +546,13 @@ export function applyLook(next: Look): void {
   if (prev && JSON.stringify(prev) === JSON.stringify(next)) return;
   look = next;
   const b = next.budget;
-  renderer.ao = next.ao === "off" ? null : {
-    blendIntensity: 0.75, radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: next.ao === "high" ? 16 : 8, resolution: b.aoRes,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: next.ao === "high" ? 6 : 4, rings: 2, samples: next.ao === "high" ? 16 : 8, radiusExponent: 2 },
+  const ao = next.ao, full = !!ao && ao.resolution >= 1; // the engine's AO quality: resolution < 1 = "on", ≥ 1 = "high"
+  renderer.ao = ao && {
+    blendIntensity: 0.75, radius: 0.5, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // high threshold: only the moon, lanterns, fireflies and highlights bloom
-  renderer.bloom = next.bloom ? { strength: 0.55, radius: 0.45, threshold: 0.92, resolution: b.bloomRes } : null;
+  renderer.bloom = next.bloom === null ? null : { strength: 0.55, radius: 0.45, threshold: 0.92, resolution: next.bloom };
   // main.js GradeShader (linear, before the output): S-curve 0.18, saturation 1.1, cool shadows / warm highlights over 0.15–0.7 luma,
   // the 0.26 vignette from 0.38 to 0.9 with the horizontal axis × 1.1
   renderer.grade = next.grade ? {
@@ -667,7 +669,7 @@ export function clearBoard(): void {
   }
   tiles.clear();
   if (marker) marker.visible = false;
-  particleData = [];
+  particles?.clear();
   fitShadow(10);
   if (decor) decor.visible = true;
 }
@@ -679,10 +681,7 @@ export function burstAt(tile: Tile): void {
   const x = p.x, y = p.y + 0.3, z = p.z;
   const cap = burstSize(look);
   if (reducedMotion || !cap) return;
-  const rng = R.makeRng(Math.floor(x * 97 + z * 131 + nowMs() % 1000), "vfx");
-  for (let i = 0; i < cap && particleData.length < PARTICLE_POOL; i++) {
-    particleData.push({ x, y, z, vx: (rng() - 0.5) * 2.4, vy: rng() * 2.4 + 0.8, vz: (rng() - 0.5) * 2.4, life: 1 });
-  }
+  particles?.burst(cap, [x, y, z]);
 }
 
 // ---------------------------------------------------------------------------- camera
@@ -771,24 +770,6 @@ export function tileCenter(id: number): { x: number; y: number } | null {
 }
 
 // ---------------------------------------------------------------------------- the frame
-function updateParticles(dt: number): void {
-  if (!particles) return;
-  const pos = particles.geometry.getAttribute("position") as BufferAttribute;
-  const arr = pos.array as Float32Array;
-  let n = 0;
-  for (const p of particleData) {
-    p.life -= dt * 1.4;
-    if (p.life <= 0) continue;
-    p.vy -= dt * 3;
-    p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-    arr[n * 3] = p.x; arr[n * 3 + 1] = p.y; arr[n * 3 + 2] = p.z;
-    particleData[n] = p;
-    n++;
-  }
-  particleData.length = n;
-  pos.needsUpdate = true;
-  particles.geometry.setDrawRange(0, n);
-}
 function updateFireflies(t: number): void {
   const f = fireflies;
   if (!f) return;
@@ -834,7 +815,6 @@ export function update(): void {
   runJobs();
   if (!lastState) titleCamera(dt);
   updateCamera(dt);
-  updateParticles(dt);
   updateAmbient(dt);
   if (marker?.visible && !reducedMotion) (marker.material as MeshBasicMaterial).opacity = 0.7 + 0.25 * Math.sin(t / 240);
   // the hint's glow ends after its 2.2 s

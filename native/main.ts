@@ -18,7 +18,7 @@
 // wall-clock second), so pauses and slow frames never cost time and play
 // scripts replay exactly.
 import "./i18n.ts";
-import { clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
+import { levelSettings, clipboard, frame, onFixedUpdate, onPreferencesChange, onRender, onResume, onStart, onSuspend, onUpdate, preferences, setFixedRate } from "starhermit:engine";
 import { onAction, onPointerButton, onPointerMove, onTouch, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onSessionEnded, player, requestSignIn } from "starhermit:platform";
@@ -62,7 +62,6 @@ export const app = {
   /** The focus was moved by keys or a pad (the focus ring shows only then). */
   keyFocus: false,
   toast: null as Toast | null,
-  appToast: null as Toast | null,
   caption: null as Toast | null,
   scoresBoard: "global" as "global" | "daily" | "friends",
   scores: null as { entries: { name: string; score: number; durationMs: number; mine: boolean }[]; note: string } | "loading" | null,
@@ -94,7 +93,7 @@ export function announce(text: string, assertive = false): void {
 /** The round's message line (#hud-message, 2.6 s). */
 export function toast(text: string, seconds = 2.6): void { app.toast = { text, until: now() + seconds }; }
 /** The toast seen on every screen (#app-toast, 3.2 s). */
-export function appToast(text: string, seconds = 3.2): void { app.appToast = { text, until: now() + seconds }; }
+export function appToast(text: string, seconds = 3.2): void { ui.toast!(text, { duration: seconds, style: "toast", dismissible: false }); }
 /** A sound with its caption (Captions: "♪ …" for 1.4 s). */
 export function sfx(event: string): void {
   const cap = audio.play(event);
@@ -112,9 +111,6 @@ export function show(screen: Screen, focus: string | null = "first"): void {
   app.focusNext = focus;
   ui.setFocus(null);
 }
-const pendingActs: (() => void)[] = [];
-/** A widget's press, run once the frame's UI is built (state changes mid-build would break later widgets). */
-export function later(fn: () => void): void { pendingActs.push(fn); }
 export const inRound = (): boolean => !!session.state;
 
 // ------------------------------------------------------------------ session
@@ -271,8 +267,8 @@ function postToLeaderboard(): void {
 export function leaderboardLine(): string | null {
   const r = app.lb;
   if (!r) return null;
-  if (r === "posting") return S("lbPosting");
-  return !r.posted ? S("lbNotPosted") : r.rank ? S("lbRank", { rank: r.rank }) : S("lbPosted");
+  if (r === "posting") return S("leaderboardPosting");
+  return !r.posted ? S("leaderboardNotPosted") : r.rank ? S("leaderboardRank", { rank: r.rank }) : S("leaderboardPosted");
 }
 function unlock(key: string): boolean {
   const p = platform.progress();
@@ -457,7 +453,7 @@ export function setGuestName(name: string): void {
 export function copyInvite(): void {
   const link = platform.inviteLink();
   if (!link) return;
-  try { clipboard.writeText(link); appToast(S("inviteCopied")); } catch { appToast(S("inviteLink", { url: link }), 8); }
+  try { clipboard.writeText(link); appToast(S("inviteCopied")); } catch { appToast(S("inviteLink", { link }), 8); }
 }
 export function signIn(): void { void requestSignIn().catch(() => undefined); }
 
@@ -577,10 +573,9 @@ function pointerInput(): void {
 let lookKey = "";
 function applyLook(): void {
   const f = frame();
-  const k = `${f.quality}:${f.levelIndex}`;
-  if (k === lookKey) return;
-  lookKey = k;
-  render.applyLook(lookFor(f.quality, f.levelIndex));
+  if (f.level === lookKey) return;
+  lookKey = f.level;
+  render.applyLook(lookFor(levelSettings(f.level)));
 }
 
 onStart(() => {
@@ -635,13 +630,11 @@ onUpdate(() => {
   audio.update();
   const t = now();
   if (app.toast && app.toast.until <= t) app.toast = null;
-  if (app.appToast && app.appToast.until <= t) app.appToast = null;
   if (app.caption && app.caption.until <= t) app.caption = null;
 });
 onRender(() => {
   hudRects.length = 0;
   render.update();
   drawScreens();
-  for (const fn of pendingActs.splice(0)) fn();
   pointerInput();
 });
