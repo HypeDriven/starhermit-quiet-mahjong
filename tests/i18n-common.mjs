@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-export const LOCALES = ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT'];
+export const LOCALES = ['en-US', 'es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT', 'en-GB', 'es-ES', 'fr-CA', 'fr-BE', 'de-BE', 'en-SG', 'en-HK', 'en-BQ', 'es-CO', 'de-IT', 'fr-IT', 'es-CL', 'es-AR', 'es-EC', 'nl-BE', 'zh-SG', 'nl-NL', 'ja-JP', 'ms-SG', 'ta-SG', 'zh-HK', 'yue-HK', 'fi-FI', 'sv-FI', 'et-EE', 'vi-VN', 'de-BR', 'id-ID', 'lb-BE', 'eu-FR', 'oc-FR', 'sl-IT', 'oc-IT', 'ru-FI', 'eu-ES', 'gl-ES', 'ru-EE', 'su-ID', 'da-DE', 'co-FR', 'ca-FR', 'fur-IT', 'ca-IT', 'ca-ES', 'bew-ID', 'km-VN'];
 export const FULL = ['es-419', 'de-DE', 'fr-FR', 'pt-BR', 'it-IT'];
 
 export const norm = (s) => String(s).replace(/\s+/g, ' ').trim();

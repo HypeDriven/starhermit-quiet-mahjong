@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Quiet Mahjong on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules (js/rules.js) and the content
@@ -632,9 +633,13 @@ onUpdate(() => {
   if (app.toast && app.toast.until <= t) app.toast = null;
   if (app.caption && app.caption.until <= t) app.caption = null;
 });
-onRender(() => {
+onRender(__l10nRender(() => {
   hudRects.length = 0;
   render.update();
   drawScreens();
   pointerInput();
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

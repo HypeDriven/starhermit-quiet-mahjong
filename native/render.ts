@@ -1,3 +1,5 @@
+// localization-runtime:attached
+import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The moonlit garden on starhermit:scene, as the browser build's js/main.js
 // `render` drew it with three.js r185: the sky and fog, the moon (key light
 // with its shadow fitted to the board, a bright disc with a halo), ambient and
@@ -271,7 +273,7 @@ function faceTexture(face: string): Texture {
   g.fillStyle = famColors[fam] ?? "#557";
   g.fillRect(20, 282, FW - 40, 32);
   g.fillStyle = "#1a2030";
-  g.font = "144px serif";
+  g.font = __l10nCanvasFont("144px serif");
   g.textAlign = "center"; g.textBaseline = "middle";
   g.fillText(R.faceGlyph(face), FW / 2, 150);
   // side band: ivory body over a coloured backing, like a two-layer tile

@@ -157,3 +157,11 @@ Success targets for the first public test: median first-play time under 20 secon
 - `tests/native.mjs` — the web index is current, `tsc` (no skipLibCheck), `starhermit check .` with no warnings, and render-check play scripts that drive the real UI: `journey-1.play` (desktop by pointer: Journey, a hint, pause, help, the board cleared, results, Home), `lesson-keys.play` (Lesson 1 entirely by arrow keys and Enter), `sprint-phone.play` (phone portrait at DPR 3 by touch: Moon Sprint against its clock, profile, score chase), `journey-2-landscape.play` (phone landscape by touch: a shuffle, pause, the board cleared) and today's Daily (generated at test time). The scripts are generated from the rules' greedy solver by `tools/gen-plays.mjs` (`npm run plays`).
 
 `npm run test:browser` (`tools/browser-play.mjs`) plays the packaged web build in Chrome on the GPU (`~/games/tools/gpu-chrome.mjs`) at a desktop, a phone (DPR 3) and a phone held sideways, clearing boards through the accessibility targets, and fails on console errors or warnings.
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `nl-BE`, `zh-SG`, `nl-NL`, `ja-JP`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `fi-FI`, `sv-FI`, `et-EE`, `vi-VN`, `id-ID`, `lb-BE`, `eu-FR`, `oc-FR`, `sl-IT`, `oc-IT`, `ru-FI`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `da-DE`, `co-FR`, `ca-FR`, `fur-IT`, `ca-IT`, `ca-ES`, `bew-ID`, `km-VN`.
+
+<!-- regional-localization:end -->
