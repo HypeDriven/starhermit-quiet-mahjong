@@ -16,7 +16,7 @@
     "cover.jpg": {"sha256": "6065fb52499638f1ba0477c50bbf7d74d277170221baee4ba46f0c296be69ac8", "size": 158732},
     "favicon.png": {"sha256": "2a0358d4469581070c08bbb6e37ef7f249b0c072c4818bcbcbcc43c6ec1670ce", "size": 96052},
     "icon.png": {"sha256": "d31cb1e66d072ef1e16cf148a87b73d0dad96a6b641a4a90bf45add52bcfbd1c", "size": 13976},
-    "index.html": {"sha256": "2712a3dbdd2a53f60d231c934b98e6ba871d24621ccccee27aca8568bec9c0cb", "size": 1943},
+    "index.html": {"sha256": "262e5bc3ed0450a7d8cb0044ea90f2c4c43d68130155fc19f68de315068ada4c", "size": 1943},
     "js/content.js": {"sha256": "723a6f8a134dc6c67d6164d32a1b0d097253ec52173428b15da43a38f918aa97", "size": 7875},
     "js/progress.js": {"sha256": "cd3f561c1d1813fdb6c48acda1cc33eda1b521d7d987634595c12f109ed368fa", "size": 7189},
     "js/rules.js": {"sha256": "61f36585cda6fe0ad1d8b5ec95957107465fe239913072ea1285b808438f9081", "size": 23138},
@@ -31,6 +31,7 @@
     "native/render.ts": {"sha256": "24a3417742a2174a00fcd2f2f78f4b41b9d6ba4dd10f9bb2eb29f36b3ab8b817", "size": 36974},
     "native/screens.ts": {"sha256": "daee7ccc4b7f9825b868b021203d95fc7a8fac86ce78d127611e0e1ddfaea05e", "size": 37008},
     "native/style.ts": {"sha256": "0f345b6c4cd159004ddf2d0a9c5a16da2066b030aba16cdaeda4eafd134492a7", "size": 2734},
+    "publication.json": {"sha256": "2f46a5aaf64f490e4752f3c53c8dc78ef9bf1f73dfcef51c1d833969c69fa026", "size": 3225},
     "score-script.js": {"sha256": "762eda4323fbe38bb29abf1117ec1d637253e288024f9aa8fcb5735b81ef2902", "size": 2488},
     "sfx/hint-glimmer.opus": {"sha256": "12d78287d02a73787c596acb507b5f91389b1ad160f7c4d87ad60f221b369350", "size": 29990},
     "sfx/invalid-dull-thud.opus": {"sha256": "1bc3259262f8ee76905cf085ac3644b146ed6cc430243b5b7b78a483a7a1c8f2", "size": 11796},
@@ -44,7 +45,7 @@
     "sfx/ui-focus-tick.opus": {"sha256": "f9799a881286757570633a5c65577658b4ac7d2241adfeee5c8d6e489e56fd4e", "size": 11625},
     "sfx/undo-reverse-tap.opus": {"sha256": "f7962d4c508a81ffc8d2e1781eb7f31f26c28df3da0e98822cdf91ae8e86f202", "size": 11468},
     "sfx/win-garden-chime.opus": {"sha256": "1460b02f87abeb28ad2d49f26361d8b3a36071dde2d4791468af3237705d8b8a", "size": 46847},
-    "starhermit.txt": {"sha256": "85abf270af89cddd648e1ed94bd640c1b3a299c9530cfe7897b775f5e61c3a8e", "size": 2096}
+    "starhermit.txt": {"sha256": "bff304a51f2d25a7e07193b44f779d90375d07a707d66adaf77ac838b2475bd1", "size": 2096}
   },
   "excluded": ["LICENSE.md", "coverart.png", "data/", "favicon.svg", "node_modules/", "package.json", "server.js", "sfx/manifest.json", "sfx/manifest.md", "spec.md", "tests/", "tools/", "tsconfig.json"],
   "format": 1
