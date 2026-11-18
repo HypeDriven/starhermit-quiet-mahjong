@@ -1,17 +1,16 @@
 // localization-runtime:attached
-import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
+import {
+  localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // The moonlit garden on starhermit:scene, as the browser build's js/main.js
 // `render` drew it with three.js r185: the sky and fog, the moon (key light
 // with its shadow fitted to the board, a bright disc with a halo), ambient and
 // hemisphere fill, the gravel ground, the stone table (a carved rim and a
 // pedestal on detailed looks), garden rocks, three paper lanterns on poles
 // with warm point lights that flicker, the star field, drifting fireflies, the
-// decorative tiles on the table behind the title menu (with a slow orbit),
-// a ceramic tile per rules tile (a box, or a rounded clear-coated slab on
+// decorative tiles on the table behind the title menu (with a slow orbit), // a ceramic tile per rules tile (a box, or a rounded clear-coated slab on
 // detailed looks) with its face drawn into a canvas texture (glyph, family
 // colour band, two-tone side), the soft ring under every free tile, the
-// pulsing marker and lift of the selected tile, the selection and hint glow,
-// the match sparks and the drag orbit. Rendering reads rules snapshots and
+// pulsing marker and lift of the selected tile, the selection and hint glow, // the match sparks and the drag orbit. Rendering reads rules snapshots and
 // never writes them.
 //
 // From three.js r185: punctual light intensities are the page's (minor 23+);
@@ -24,12 +23,9 @@ import { localizedCanvasFont as __l10nCanvasFont } from "./l10n/font.ts";
 // whole window. Adaptive resolution, the pixel-ratio cap and the frame-rate
 // readout are the runtime's. Animation runs on frame().time.
 import {
-  ACESFilmicToneMapping, AdditiveBlending, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color,
-  CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, Mesh, MeshBasicMaterial,
-  MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PerspectiveCamera, PMREMGenerator, PointLight, Points,
-  ParticleEmitter, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, OrthographicCamera, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial,
-  TorusGeometry, Vector2, Vector3, renderer, scene, type Material, type Object3D, type Texture,
+  ACESFilmicToneMapping, AdditiveBlending, AmbientLight, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry, Color, CylinderGeometry, DirectionalLight, DoubleSide, Fog, Group, HemisphereLight, IcosahedronGeometry, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NormalBlending, PerspectiveCamera, PMREMGenerator, PointLight, Points, PointsMaterial, Raycaster, RepeatWrapping, RingGeometry, OrthographicCamera, RoomEnvironment, RoundedBoxGeometry, SRGBColorSpace, SphereGeometry, Sprite, SpriteMaterial, TorusGeometry, Vector2, Vector3, renderer, scene, type Material, type Object3D, type Texture,
 } from "starhermit:scene";
+import { GPUParticleEmitter } from "starhermit:particles";
 import { OffscreenCanvas, fonts } from "starhermit:canvas";
 import { frame } from "starhermit:engine";
 import { C, R, type State, type Theme, type Tile } from "./game.ts";
@@ -163,7 +159,7 @@ let marker: Mesh | null = null;
 let decor: Group | null = null;
 let fireflies: Points | null = null;
 let fireflySeeds: { x: number; z: number; y: number; p: number; s: number }[] = [];
-let particles: ParticleEmitter | null = null;
+let particles: GPUParticleEmitter | null = null;
 let lanterns: { lamp: Mesh; light: PointLight; base: number; phase: number }[] = [];
 let lastState: State | null = null;
 let built = false;
@@ -513,7 +509,7 @@ function buildEnvironment(): void {
   world.add(marker);
 
   // particle pool (bounded, cosmetic)
-  particles = new ParticleEmitter({
+  particles = new GPUParticleEmitter({
     capacity: PARTICLE_POOL, seed: 0x5a11, space: "local", life: 1 / 1.4,
     velocity: [0, 2, 0], velocitySpread: [1.2, 1.2, 1.2], gravity: [0, -3, 0],
     material: new PointsMaterial({

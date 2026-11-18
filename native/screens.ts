@@ -1,3 +1,4 @@
+import { bindings } from "starhermit:input";
 import { localizedStyle as __l10nStyle } from "./l10n/font.ts";
 import { localizedDrawOptions as __l10nDrawOptions } from "./l10n/font.ts";
 // localization-runtime:attached
@@ -159,7 +160,7 @@ function keysLine(): string {
 }
 
 // ------------------------------------------------------------------ the frame
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   firstId = null;
   const s = app.screen;
@@ -540,16 +541,7 @@ function playView(L: Layout, live: boolean): void {
   }
   boardOverlay(st, live, L);
   actions(L, st, live);
-  // #hud-message and #caption
-  if (app.toast) {
-    const w = Math.min(616, L.lw - 32);
-    const y = L.short ? 8 : L.phone ? 96 : 84;
-    const placeAt = L.short ? { anchor: "bottom-start" as const, x: 8, y } : { anchor: "bottom" as const, y };
-    const tw2 = L.short ? 160 : w;
-    ui.place("hud-message", placeAt, () => {
-      ui.style(__l10nStyle("toast")).row("toast-box", () => { para(app.toast!.text, tw2 - 30, "toast-text", "hud-message-text"); });
-    });
-  }
+  // #caption
   if (app.caption) {
     ui.place("caption", { anchor: "top", y: 64 }, () => {
       ui.style(__l10nStyle("caption")).row("caption-box", () => { ui.style(__l10nStyle("caption-text")).id("sound-caption").label(app.caption!.text); });
@@ -633,4 +625,11 @@ function actions(L: Layout, st: State, live: boolean): void {
     ui.row("actions", () => { for (const b of items) one(b, null); }, { spacing: 8, align: "center" });
   });
   hudRects.push(r);
+}
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["up","down","left","right","select","pause","hint","undo","shuffle","camera"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
 }

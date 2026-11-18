@@ -92,7 +92,9 @@ export function announce(text: string, assertive = false): void {
   try { ui.announce(text.slice(0, 600), { politeness: assertive ? "assertive" : "polite" }); } catch { /* one a frame */ }
 }
 /** The round's message line (#hud-message, 2.6 s). */
-export function toast(text: string, seconds = 2.6): void { app.toast = { text, until: now() + seconds }; }
+export function toast(text: string, seconds = 2.6): void {
+  ui.toast!(text, { duration: seconds, position: "bottom", offset: 84, style: "toast", dismissible: false });
+}
 /** The toast seen on every screen (#app-toast, 3.2 s). */
 export function appToast(text: string, seconds = 3.2): void { ui.toast!(text, { duration: seconds, style: "toast", dismissible: false }); }
 /** A sound with its caption (Captions: "♪ …" for 1.4 s). */

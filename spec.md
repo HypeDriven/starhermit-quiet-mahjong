@@ -5,7 +5,7 @@
 **Genre:** Pair-removal puzzle
 **Players:** 1 player; asynchronous score comparison
 **Targets:** the StarHermit client (native) and browsers (the engine's web runtime), desktop and phones, landscape and portrait
-**Technology:** a StarHermit engine script game (engine 1.39.0, host API minor 39): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
+**Technology:** a StarHermit engine script game (engine 1.44.1, host API minor 44): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
 
 ## 1. Product vision
 
@@ -117,7 +117,7 @@ Time runs on the runtime's fixed steps at 60 Hz: an active round's clock sends t
 
 ## 6. StarHermit integration
 
-- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.39.0`, `engine.minor=39`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
+- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.44.1`, `engine.minor=44`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
 - **Saves:** progress is the game's save (`saves`, device and account); two devices' copies merge (better stage and daily results, larger counters, earliest achievement times, the union of friends). The browser build's cloud save (`game:<slug>`) is read once as a foreign save: its progress merges in, its game options are adopted, and it is replaced.
 - **Settings:** the game's options (captions, theme, palette, left-handed, tutorial flag) are engine settings kept with the account; the browser build's settings KV values are adopted once and all its keys removed.
 - **Device store:** the interrupted round and the local leaderboard keep the browser build's localStorage keys (`qm:save:v1`, `qm:board:v1`); browser guests' old localStorage progress does not migrate (the engine's storage is separate).
@@ -165,3 +165,13 @@ Success targets for the first public test: median first-play time under 20 secon
 The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `nl-BE`, `zh-SG`, `nl-NL`, `ja-JP`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `fi-FI`, `sv-FI`, `et-EE`, `vi-VN`, `id-ID`, `lb-BE`, `eu-FR`, `oc-FR`, `sl-IT`, `oc-IT`, `ru-FI`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `da-DE`, `co-FR`, `ca-FR`, `fur-IT`, `ca-IT`, `ca-ES`, `bew-ID`, `km-VN`.
 
 <!-- regional-localization:end -->
+
+Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
+
+## Engine 1.44.1
+
+Browser play uses the WebGPU-only StarHermit 1.44.1 web runtime. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+
+The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
+
+Toasts use native engine stacking, styling, accessibility and lifetime management.
