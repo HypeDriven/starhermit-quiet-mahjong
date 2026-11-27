@@ -5,7 +5,7 @@
 **Genre:** Pair-removal puzzle
 **Players:** 1 player; asynchronous score comparison
 **Targets:** the StarHermit client (native) and browsers (the engine's web runtime), desktop and phones, landscape and portrait
-**Technology:** a StarHermit engine script game (engine 1.51.0, host API minor 51): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
+**Technology:** a StarHermit engine script game (engine 1.53.0, host API minor 53): TypeScript in `native/`, the rules and content as plain ES modules in `js/`, the 3D garden on `starhermit:scene`, every screen on `starhermit:ui`
 
 ## 1. Product vision
 
@@ -117,7 +117,7 @@ Time runs on the runtime's fixed steps at 60 Hz: an active round's clock sends t
 
 ## 6. StarHermit integration
 
-- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.51.0`, `engine.minor=51`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
+- **Package:** `starhermit.txt` (`engine.entry=native/main.ts`, `engine.version=1.53.0`, `engine.minor=53`, capabilities platform, storage, clipboard, the control and gamepad defaults, `engine.limits.image_mib=192`); `npm run package` writes the web loader `index.html` and `starhermit-files.json`. Development files (tests, tools, server.js, data, docs) are left out by `.starhermitignore`.
 - **Saves:** progress is the game's save (`saves`, device and account); two devices' copies merge (better stage and daily results, larger counters, earliest achievement times, the union of friends). The browser build's cloud save (`game:<slug>`) is read once as a foreign save: its progress merges in, its game options are adopted, and it is replaced.
 - **Settings:** the game's options (captions, theme, palette, left-handed, tutorial flag) are engine settings kept with the account; the browser build's settings KV values are adopted once and all its keys removed.
 - **Device store:** the interrupted round and the local leaderboard keep the browser build's localStorage keys (`qm:save:v1`, `qm:board:v1`); browser guests' old localStorage progress does not migrate (the engine's storage is separate).
@@ -168,9 +168,9 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 Cosmetic particle emitters use native GPU particles with automatic CPU fallback on devices or graphics tiers without GPU particle support.
 
-## Engine 1.51.0
+## Engine 1.53.0
 
-Browser play uses the StarHermit 1.51.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the StarHermit 1.53.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
@@ -179,3 +179,5 @@ Toasts use native engine stacking, styling, accessibility and lifetime managemen
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
+
+On engine 1.53.0, browser play through WebGL 2 compiles a frame's shader programs together and holds that frame until they are linked, blends skinned meshes in one pass, reuses the window pass's depth, and uses a hardware WebGL 2 context when WebGPU's adapter is software.
