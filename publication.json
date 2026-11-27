@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:01:06.947576+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-26T21:58:48.832775+00:00",
+    "coverArtUpdatedAt": "2026-11-27T17:07:27.371025+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-26T21:58:48.820739+00:00",
+      "deployedAt": "2026-11-27T17:07:27.360307+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.51.0",
+      "engineVersion": "1.53.0",
       "deployWarning": null
     },
     "description": "Remove matching pairs of uncovered tiles to clear layered mahjong layouts in a moonlit garden.",
@@ -36,10 +36,10 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-26T21:58:49.179Z",
-  "sourceCommit": "47700a6836f188cbbce75fda561223b17562d0be",
+  "publishedAt": "2026-11-27T17:07:27.658Z",
+  "sourceCommit": "a3afd79c5128caf5673ef5d66226a53d13b256e4",
   "bytesReceived": 1632112,
-  "archiveSha256": "520f809f6a3759ae7a70f86053f8209b95545cbef1688cc12b7f5d19f5ee413d",
+  "archiveSha256": "6bb47ae63bd39407abdef2d9cd799f565de61ebae583cedf798ee88f2ac1cae5",
   "indexSha256": "35d37459f568d39d2a00ecfb8f03de652f7fa93d979ec866b1319f931a2cc144",
   "result": {
     "clientPublished": true,
@@ -48,7 +48,7 @@
     "bytesReceived": 1632112,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.51.0",
+    "engineVersion": "1.53.0",
     "deployWarning": null
   },
   "liveVerification": {
