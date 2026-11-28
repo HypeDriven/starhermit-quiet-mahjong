@@ -733,15 +733,18 @@ function updateCamera(dt: number): void {
 }
 
 const ray = new Raycaster();
+const pickNdc = new Vector2();
+const pickMeshes: Mesh[] = [];
 /** The live tile under a window point, or null. */
 export function pick(x: number, y: number): number | null {
   const f = frame();
   if (!lastState || f.width <= 0 || f.height <= 0) return null;
   camera.updateMatrixWorld();
-  ray.setFromCamera(new Vector2((x / f.width) * 2 - 1, -(y / f.height) * 2 + 1), camera);
-  const meshes: Mesh[] = [];
-  for (const e of tiles.values()) if (e.mesh.visible) meshes.push(e.mesh);
-  const hits = ray.intersectObjects(meshes, false);
+  pickNdc.set((x / f.width) * 2 - 1, -(y / f.height) * 2 + 1);
+  ray.setFromCamera(pickNdc, camera);
+  pickMeshes.length = 0;
+  for (const e of tiles.values()) if (e.mesh.visible) pickMeshes.push(e.mesh);
+  const hits = ray.intersectObjects(pickMeshes, false);
   if (!hits.length) return null;
   for (const [id, e] of tiles) if (e.mesh === hits[0]!.object) return id;
   return null;

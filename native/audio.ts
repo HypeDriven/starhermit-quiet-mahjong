@@ -91,13 +91,22 @@ export function loadSfx(): void {
       if (list.length) banks.set(event, new SoundBank({ clips: list, order: "sequence", bus: "effects" }));
     });
   }
-  const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
-  renderAmbience().then((c) => { ambClip = c; }, warn);
-  for (const f of FREQS) renderNote(f).then((c) => { noteClips.set(f, c); }, warn);
 }
 
 /** Each frame, once the mixer runs: the ambience and the pad. */
+let __bedsStarted = false;
+function startBeds(): void {
+  if (__bedsStarted) return;
+  __bedsStarted = true;
+  void (async () => {
+    const warn = (e: unknown): void => { console.warn(`audio: ${String(e)}`); };
+    renderAmbience().then((c) => { ambClip = c; }, warn);
+    for (const f of FREQS) renderNote(f).then((c) => { noteClips.set(f, c); }, warn);
+  })();
+}
+
 export function update(): void {
+  startBeds();
   if (context.state !== "running" || !ambClip) return;
   if (!ambVoice) {
     try { ambVoice = playClip(ambClip, { bus: "music", gain: 0, loop: true }); } catch { ambVoice = null; }
